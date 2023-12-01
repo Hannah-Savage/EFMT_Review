@@ -1,0 +1,501 @@
+---
+title: "Fried_task_overview"
+author: "HannahSavage"
+date: "2023-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Set env
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+#library('qgraph')
+library('data.table')
+library('reshape2')
+library('ade4')
+library('viridis')
+library(extrafont)
+library(ggalluvial)
+ 
+```
+
+#Define themes
+```{r}
+##DEFINE THEMES:
+#Demographics plot
+theme_demographics <- theme_bw() +
+  theme(
+    aspect.ratio = 1/1,
+    panel.grid = element_blank(), #no grid
+    panel.border = element_blank(), #no border around the entire plot
+    axis.line.x.bottom = element_line(color = 'black'), #bottom border
+    axis.line.y.left   = element_line(color = 'black'), #left border
+    axis.line.y.right  = element_blank(), #no right border
+    axis.text.y.right  = element_blank(),
+    #legend.title = element_blank(),
+    #legend.position = c(0.9,0.6),
+    plot.title = element_text()
+  )
+
+```
+
+#Import the Data Extraction table:
+```{r}
+Extracted_data <- read_excel("M:/Documents/Hariri_review/USE_ME/Data_extraction_CLEANING.xlsx")
+#View(Extracted_data)
+
+Extracted_data[Extracted_data == "NA"] <- NA
+```
+
+#Select the columns that will be used
+```{r}
+d <- select(Extracted_data,c('Article_Num','Publication_Year','Matching_Rule/Task_Instructions1','Matching_Rule/Task_Instructions2',
+                                          colnames(Extracted_data)[grep("Target_stimulus",colnames(Extracted_data))], 
+                                          colnames(Extracted_data)[grep("Control_stimulus",colnames(Extracted_data))],
+                                          colnames(Extracted_data)[grep("Other_stimulus",colnames(Extracted_data))], 
+                                          colnames(Extracted_data)[grep("Trial",colnames(Extracted_data))]))
+colnames(d)[3] ="Instructions"
+colnames(d)[4] ="Instructions2"
+```
+
+
+#Get overview of frequency of different task parameters
+```{r}
+Target_stimulus_summary <- data.frame('Target_stimulus'=unique(Extracted_data$Target_stimulus), 'Count'=0)
+
+for (row_no in 1:nrow(Target_stimulus_summary)) {
+    Target_stimulus_summary[row_no,'Count'] = Extracted_data %>%
+        filter(Target_stimulus==Target_stimulus_summary[row_no, 'Target_stimulus']) %>%
+        nrow()
+}
+
+Instructions_summary <- data.frame('Instructions'=unique(d$Instructions), 'Count'=0)
+
+for (row_no in 1:nrow(Instructions_summary)) {
+    Instructions_summary[row_no,'Count'] = d %>%
+        filter(Instructions==Instructions_summary[row_no, 'Instructions']) %>%
+        nrow()
+}
+
+Instructions_summary2 <- data.frame('Instructions2'=unique(d$Instructions2), 'Count'=0)
+
+for (row_no in 1:nrow(Instructions_summary2)) {
+    Instructions_summary2[row_no,'Count'] = d %>%
+        filter(Instructions2==Instructions_summary2[row_no, 'Instructions2']) %>%
+        nrow()
+}
+
+Control_stimulus_summary <- data.frame('Control_stimulus'=unique(Extracted_data$Control_stimulus), 'Count'=0)
+
+for (row_no in 1:nrow(Control_stimulus_summary)) {
+    Control_stimulus_summary[row_no,'Count'] = Extracted_data %>%
+        filter(Control_stimulus==Control_stimulus_summary[row_no, 'Control_stimulus']) %>%
+        nrow()
+}
+
+Other_stimulus_summary <- data.frame('Other_stimulus'=unique(Extracted_data$Other_stimulus), 'Count'=0)
+
+for (row_no in 1:nrow(Other_stimulus_summary)) {
+    Other_stimulus_summary[row_no,'Count'] = Extracted_data %>%
+        filter(Other_stimulus==Other_stimulus_summary[row_no, 'Other_stimulus']) %>%
+        nrow()
+}
+
+Expression_summary <- data.frame('Target_stimulus_expressions'=unique(Extracted_data$Target_stimulus_expressions), 'Count'=0)
+
+for (row_no in 1:nrow(Expression_summary)) {
+    Expression_summary[row_no,'Count'] = Extracted_data %>%
+        filter(Target_stimulus_expressions==Expression_summary[row_no, 'Target_stimulus_expressions']) %>%
+        nrow()
+}
+
+Trials_Num_Summary <- data.frame('Target_stimulus_Num_of_presentations'=unique(Extracted_data$'Target_stimulus_Num_of_presentations'), 'Count'=0)
+
+for (row_no in 1:nrow(Trials_Num_Summary)) {
+    Trials_Num_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Target_stimulus_Num_of_presentations ==Trials_Num_Summary[row_no, 'Target_stimulus_Num_of_presentations']) %>%
+        nrow()
+}
+
+
+Controls_Num_Summary <- data.frame('Control_stimulus_Num_of_presentations'=unique(Extracted_data$'Control_stimulus_Num_of_presentations'), 'Count'=0)
+
+for (row_no in 1:nrow(Controls_Num_Summary)) {
+    Controls_Num_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Control_stimulus_Num_of_presentations ==Controls_Num_Summary[row_no, 'Control_stimulus_Num_of_presentations']) %>%
+        nrow()
+}
+
+
+
+Trials_Block_Summary <- data.frame('Target_stimulus_Num_of_blocks'=unique(Extracted_data$'Target_stimulus_Num_of_blocks'), 'Count'=0)
+
+for (row_no in 1:nrow(Trials_Block_Summary)) {
+    Trials_Block_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Target_stimulus_Num_of_blocks == Trials_Block_Summary[row_no, 'Target_stimulus_Num_of_blocks']) %>%
+        nrow()
+}
+
+
+Controls_Block_Summary <- data.frame('Control_stimulus_Num_of_blocks'=unique(Extracted_data$'Control_stimulus_Num_of_blocks'), 'Count'=0)
+
+for (row_no in 1:nrow(Controls_Block_Summary)) {
+    Controls_Block_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Control_stimulus_Num_of_blocks ==Controls_Block_Summary[row_no, 'Control_stimulus_Num_of_blocks']) %>%
+        nrow()
+}
+
+Trial_duration_Summary <- data.frame('Trial_duration'=unique(Extracted_data$'Trial_duration'), 'Count'=0)
+
+for (row_no in 1:nrow(Trial_duration_Summary)) {
+    Trial_duration_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Trial_duration ==Trial_duration_Summary[row_no, 'Trial_duration']) %>%
+        nrow()
+}
+
+Trial_duration_Summary[Trial_duration_Summary == "Faces: 5s; Control: 4s"] <- "D"
+Trial_duration_Summary[Trial_duration_Summary == "2.5 (slightly jittered in 12 different steps to vary by 0–50 ms around the mean)"] <- "2.5s J"
+Trial_duration_Summary[Trial_duration_Summary == "NA *self paced* (max 4s)"] <- "Variable"
+Trial_duration_Summary[Trial_duration_Summary == "Run1: 4s; Run 2: 3s"] <- "Variable" 
+Trial_duration_Summary[Trial_duration_Summary == "2s minumum"] <- "Variable"
+Trial_duration_Summary[Trial_duration_Summary == "5s (maximum)"] <- "Variable"
+Trial_duration_Summary[is.na(Trial_duration_Summary)] <- "NA"
+
+
+Block_duration_Summary <- data.frame('Total_block_duration'=unique(Extracted_data$'Total_block_duration'), 'Count'=0)
+
+for (row_no in 1:nrow(Block_duration_Summary)) {
+    Block_duration_Summary[row_no,'Count'] = Extracted_data %>%
+        filter(Total_block_duration ==Block_duration_Summary[row_no, 'Total_block_duration']) %>%
+        nrow()
+}
+
+Instructions_summary2$Perc <- Instructions_summary2$Count/sum(Instructions_summary2$Count)*100
+
+```
+
+
+#Extract and restructure information about the expressions presented
+```{r}
+Expressions <- data.frame(Extracted_data$Target_stimulus_expressions)
+Expression_split <- separate(Expressions, c(Extracted_data.Target_stimulus_expressions), into = c("Exp1", "Exp2", "Exp3", "Exp4", "Exp5", "Exp6", "Exp7", "Exp8"), sep ='; ')
+
+ColList = c("Exp1", "Exp2", "Exp3", "Exp4", "Exp5", "Exp6", "Exp7", "Exp8")
+
+GroupList = c("angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive", "NA")
+
+New_data_frame_EXPR = Expression_split
+
+for (n in 1:nrow(Expression_split)){ #for each row
+      
+  for (c in ColList){ #for each column of the split df
+      
+      for (group in GroupList){   #for each expression
+          if (group == "angry"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], #if the string matches, and the cell before is not 1 (i.e. to stop overwriting)
+              New_data_frame_EXPR[n,group] <- ('2'), next)}
+          else if (group == "fearful"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], #if the string matches, and the cell before is not 1 (i.e. to stop overwriting)
+              New_data_frame_EXPR[n,group] <- ('3'), next)}                       #if TRUE = add value. if FALSE, continue
+          else if (group == "happy"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('4'), next)}
+          else if (group == "neutral"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('5'), next)}
+          else if (group == "surprise"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('6'), next)}
+          else if (group == "sad"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('7'), next)}
+          else if (group == "disgust"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('8'), next)}
+          else if (group == "contempt"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('9'), next)}
+          else if (group == "positive"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- ('10'), next)}
+          else if (group == "NA"){
+            ifelse(Expression_split[n,c] == GroupList[which(GroupList == group)], 
+              New_data_frame_EXPR[n,group] <- (NA), next)}
+        }
+      }
+    }
+
+
+New_data_frame_EXPR$Sample <- seq.int(nrow(New_data_frame_EXPR)) #Add Sample column
+New_data_frame_EXPR <- New_data_frame_EXPR[, c("Sample", "angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive")] #Reorder columns
+
+```
+
+#Pivot expression table for plotting
+```{r}
+#Pivot df to long format for plotting
+New_data_frame_EXPR <- New_data_frame_EXPR %>%
+  pivot_longer(cols=c("angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive"),
+                    names_to='Expressions',
+                    values_to='Used')
+    
+```
+
+#Create individual df with each variable dummy coded - by the order in which they first appear:
+```{r}
+ 
+#Target Stimuli
+data_id1 <- transform(d, TS = as.numeric(fct_inorder(factor(Target_stimulus, exclude = NA)))) #Turn strings, into factor, and number by the order in which they first appear
+#data_id1$TS
+
+#Target stimuli expressions
+data_id3 <- transform(d, Expr = as.numeric(fct_inorder(factor(Target_stimulus_expressions, exclude = NA)))) 
+#data_id3$Expr
+
+#Target presentations
+data_id6 <- transform(d, TSNum = as.numeric(fct_inorder(factor(Target_stimulus_Num_of_presentations, exclude = NA)))) 
+#data_id6$TSNum
+
+#Instructions
+data_id2 <- transform(d, Inst = as.numeric(fct_inorder(factor(Instructions, exclude = NA)))) 
+#data_id2$Inst
+
+#Control stimuli 
+data_id4 <- transform(d, CS = as.numeric(fct_inorder(factor(Control_stimulus, exclude = NA)))) 
+#data_id4$CS
+
+#Other stimuli 
+data_id5 <- transform(d, OS = as.numeric(fct_inorder(factor(Other_stimulus, exclude = NA)))) 
+#data_id5$OS
+
+DUMMY_CODED_TASK_VARS <- data.frame(data_id1$TS,    data_id3$Expr, data_id6$TSNum,       data_id2$Inst,   data_id4$CS,       data_id5$OS)
+names(DUMMY_CODED_TASK_VARS) <- c("Target_Stimuli", "Expressions", "Target_Stimuli_Num", "Instructions", "Control_Stimuli", "Other_Stimuli")
+DUMMY_CODED_TASK_VARS$Sample <- seq.int(nrow(DUMMY_CODED_TASK_VARS))
+
+##If necessary: print the levels of each condition <- useful for checking the re-coding
+#unique(fct_inorder(factor(d$Target_stimulus)))
+#unique(fct_inorder(factor(d$Target_stimulus_expressions)))
+#unique(fct_inorder(factor(d$Target_stimulus_Num_of_presentations)))
+#unique(fct_inorder(factor(d$Instructions)))
+#unique(fct_inorder(factor(d$Control_stimulus)))
+#unique(fct_inorder(factor(d$Other_stimulus)))
+```
+
+#PLOT: Task parameters and expression
+```{r}
+#col_vector<- c("#ec008c","#009e49","#00bcf2","#ee82ee","#ff0000","#FF5F1F",	"#fcef01","#68ff1a", "#FF8000", "#ffff00","#4cd964","#0000ff","#4b0082","#e81123","#fbceb1","#fff100", "darkgrey", "black")
+col_vector <-c(  "#ec008c", "#1ebbd7","#ff9966", "#58b6a6","#F9B2DC", "#c469fc", "#122da6","#FF8000", "#c345d5", "#40e8ec", "#4cd964","#5a0082", "#ff0000","#00bfff",  "#f4b74a","#56e78e" ,"darkgrey",  "black")
+                #1          #10       #11        #12       #13        #14         #15       #16        #17        #2         #3        #4         #5          #6        #7        #8        #9        
+
+Task_Param <- ggplot()+
+    geom_point(DUMMY_CODED_TASK_VARS, mapping = aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 1, colour  = fct_inorder(factor(Target_Stimuli, exclude = NA)),  size = 1))+
+    geom_point(DUMMY_CODED_TASK_VARS, mapping = aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 11, colour  = fct_inorder(factor(Instructions, exclude = NA)),  size = 1))+ 
+    geom_point(DUMMY_CODED_TASK_VARS, mapping = aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 12, colour  = fct_inorder(factor(Control_Stimuli, exclude = NA)),  size = 1))+ 
+    geom_point(DUMMY_CODED_TASK_VARS, mapping = aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 13, colour  = fct_inorder(factor(Other_Stimuli, exclude = NA)),  size = 1))+ 
+  geom_point(data = na.omit(New_data_frame_EXPR), mapping = aes(x = Sample, y = Used, colour = "darkgrey", size = 1))+
+  scale_colour_manual(values = col_vector, na.value = "transparent")+
+  scale_x_continuous(breaks=seq(0, 159, 5), expand = c(0.01,0.5))+
+  scale_y_discrete(limits = factor(1:13), labels=c("Target Stimuli", "angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive", "Instructions", "Control Stimuli", "Other Stimuli"))+
+  labs(x = "Study Sample", y = "Task Parameter", family = "Calibri Light" )+
+  theme(panel.grid = element_blank(), #no grid
+        panel.border = element_blank(), #no border around the entire plot
+        axis.line.x.bottom = element_line(color = 'black'), #bottom border
+        axis.line.y.left   = element_line(color = 'black'), #left border
+        axis.line.y.right  = element_blank(), #no right border
+        legend.title = element_blank(),
+        #legend.position = "none",
+        plot.title = element_text(),
+        panel.background = element_rect(fill = "white"),
+        aspect.ratio = 4/20,
+        axis.text.x = element_text(angle = 90),
+        text=element_text(size=18, 
+        family="Calibri Light"))
+
+#ggsave('TaskVars.png', dpi = 300, height = 20, width = 19.75, unit = 'cm')
+
+```
+
+#How many unique combinations of these ^ variables are there?
+```{r}
+#How many unique combinations of these ^ variables are there?
+print(as.numeric(count(unique(DUMMY_CODED_TASK_VARS[c("Target_Stimuli", "Expressions", "Instructions", "Control_Stimuli", "Other_Stimuli")]))))
+```
+
+#Data wrangle: Alluvial plot of task structure
+```{r}
+#Make data frame with variables for plot:
+Structuresum <-  Extracted_data[c("Target_stimulus_Num_of_blocks", "Control_stimulus_Num_of_blocks", "Target_stimulus_Num_of_presentations", "Control_stimulus_Num_of_presentations","Trials/block", "Trial_duration")]
+
+colnames(Structuresum) <- c("Target_stimulus_Num_of_blocks", "Control_stimulus_Num_of_blocks", "Target_stimulus_Num_of_presentations", "Control_stimulus_Num_of_presentations","Trial_p_block", "Trial_duration")
+
+#ReCode: 
+#98 = Variable/Self Paced
+#D = Different for faces and shapes
+
+Structuresum[Structuresum == "NA *self paced*"] <- "Variable"
+Structuresum[Structuresum == "Variable"] <- "Variable"
+Structuresum[Structuresum == "Variable: During task conditions (FEDT and SDT), individual trial durations were only limited by the subject's response, and subsequent stimuli were shown continuously without intermittent pauses."] <- "Variable"
+Structuresum[Structuresum == "44622"] <- "Variable"	#strange importing of 12/18
+Structuresum[Structuresum == "12/18"] <- "Variable"	#strange importing of 12/18
+Structuresum[Structuresum == "Faces: 8; Control: 10"] <- "D"
+Structuresum[Structuresum == "faces: 4; shapes: NA"] <- "D"
+Structuresum[Structuresum == "5 OR 6"] <- "D"
+Structuresum[Structuresum == "Faces/Scenes: 5s; Shapes: 2.5s"]  <- "D"
+Structuresum[Structuresum == "Faces: 5s; Control: 4s"] <- "D"
+Structuresum[Structuresum == "2.5 (slightly jittered in 12 different steps to vary by 0–50 ms around the mean)"] <- "2.5s J"
+Structuresum[Structuresum == "NA *self paced* (max 4s)"] <- "Variable"
+Structuresum[Structuresum == "Run1: 4s; Run 2: 3s"] <- "Variable" 
+Structuresum[Structuresum == "2s minumum"] <- "Variable"
+Structuresum[Structuresum == "5s (maximum)"] <- "Variable"
+
+Structuresum[is.na(Structuresum)] <- "NA"
+
+#remove the s in Trial duration
+Structuresum <- Structuresum %>%
+      mutate_at("Trial_duration", str_replace, "s", "")
+
+#Structuresum$Total <- summarize(count, n())
+
+#Count how many time each unique set occurs to give counts
+Structure_Sum <- count(Structuresum,Target_stimulus_Num_of_blocks, Target_stimulus_Num_of_presentations, Control_stimulus_Num_of_blocks, Control_stimulus_Num_of_presentations, Trial_p_block, Trial_duration) %>% ungroup()
+
+colnames(Structure_Sum) <- c("Target_stimulus_Num_of_blocks", "Control_stimulus_Num_of_blocks", "Target_stimulus_Num_of_presentations", "Control_stimulus_Num_of_presentations","Trial_p_block", "Trial_duration", "Total")
+
+Structure_Sum<- Structure_Sum%>%
+    mutate_if(is.character,as.factor)
+
+Structure_Sum$Total <- as.integer(Structure_Sum$Total)
+```
+
+#PLOT: Alluvial plot of task structure
+```{r}
+Task_Parameters_Allivual <- ggplot(data = Structure_Sum,
+       aes(axis1 = fct_inseq(Target_stimulus_Num_of_blocks),  
+           axis2 =  fct_inseq(Target_stimulus_Num_of_presentations), 
+           axis3 = fct_inseq(Control_stimulus_Num_of_blocks), 
+           axis4 = fct_inseq(Control_stimulus_Num_of_presentations), 
+           axis5 =fct_inseq(Trial_p_block), 
+           axis6 = Trial_duration, y = Total)
+       ) +
+  
+  geom_alluvium(aes(fill = as.factor(Total)), curve_type = "sine")+
+  
+  geom_stratum() +
+  
+  geom_text(stat = "stratum",
+            aes(label = after_stat(stratum), family ="Calibri Light"), 
+            min.y = 9, size = 3) +
+  
+  scale_x_discrete(limits = c("Target Stimuli \n Blocks", "Target Stimuli \n Trials", "Control Stimuli \n Blocks", 
+                              "Control Stimuli \n Trials", "Trials per Block", "Trial \n Duration"),
+                   expand = c(0.05, 0.05))+
+  
+  scale_y_continuous(breaks=seq(0, 160, 5), expand = c(0.01,0.5))+
+
+  scale_fill_manual(values = c("#d3d4d5","#d3d4d5","#d3d4d5", "#d3d4d5","#d3d4d5","#888a8d","#58595b","black")) +
+  
+  theme(panel.grid = element_blank(), #no grid
+        panel.border = element_blank(), #no border around the entire plot
+        axis.line.x.bottom = element_line(color = 'black'), #bottom border
+        axis.line.y.left   = element_line(color = 'black'), #left border
+        axis.line.y.right  = element_blank(), #no right border
+        legend.title = element_blank(),
+        legend.position = "right",
+        plot.title = element_text(),
+        panel.background = element_rect(fill = "white"),
+        aspect.ratio = 1.5/1,
+        #axis.text.x = element_text(angle = 90),
+        text=element_text(size=18, 
+        family="Calibri Light"))
+
+
+Task_Parameters_Allivual
+```
+
+
+
+
+
+##EXTRA PLOTS:
+
+#PLOT: Expression alone
+```{r}
+#Plot sample x inclusion of different expressions:
+expression <- ggplot(na.omit(New_data_frame_EXPR), aes(Sample, Used, status = "identity", colour = "black")) +
+              geom_point(colour = "black", size = 3)+ 
+              labs(x = "Study Sample", y = "Expression", )+
+      scale_y_discrete(limits = factor(1:12), labels=c("Target Stimuli", "angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive", "Target Stimuli Num", "Instructions", "Control_Stimuli", "Other_Stimuli"))+
+              theme(
+                panel.grid = element_blank(), #no grid
+                panel.border = element_blank(), #no border around the entire plot
+                axis.line.x.bottom = element_line(color = 'black'), #bottom border
+                axis.line.y.left   = element_line(color = 'black'), #left border
+                axis.line.y.right  = element_blank(), #no right border
+                axis.text.y.right  = element_blank(), #no right text
+                legend.title = element_blank(),
+                legend.position = "none",
+                plot.title = element_text(),
+                panel.background = element_rect(fill = "white"),
+                aspect.ratio = 0.1/1, 
+                axis.text.x = element_text(angle = 90))+
+      scale_colour_manual(values = col_vector, na.value = "transparent")+
+    scale_x_continuous(breaks=seq(0, 159, 5), expand = c(0.01,0.5))
+
+
+expression
+  
+```
+
+#PLOT: Task parameters alone
+```{r}
+#Plot sample x inclusion of different task parameters:
+
+#colour palette define: 2.5 rainbow in order
+#col_vector<- c("#ec008c","#009e49","#00bcf2","#ee82ee","#ff0000","#FF5F1F","#fcef01","#68ff1a","#31a6d1","#9b5fe0","#ee1848","#FF8000","#A0522D","#ffff00","#4cd964","#0000ff","#4b0082","#e81123","#fbceb1","#fff100")
+
+
+col_vector<- c("#ec008c","#009e49","#00bcf2","#ee82ee","#ff0000","#FF5F1F",	"#fcef01","#68ff1a", "#FF8000", "#ffff00","#4cd964","#0000ff","#4b0082","#e81123","#fbceb1","#fff100", "darkgrey")
+
+
+#plot
+ggplot(DUMMY_CODED_TASK_VARS)+
+    geom_point(aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 1, colour  = fct_inorder(factor(Target_Stimuli, exclude = NA)),  size = 0.1))+
+    #geom_point(aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 2, colour  = fct_inorder(factor(Target_Stimuli_Num, exclude = NA)),  size = 0.1))+
+    geom_point(aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 11, colour  = fct_inorder(factor(Instructions, exclude = NA)),  size = 0.1))+ 
+    geom_point(aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 12, colour  = fct_inorder(factor(Control_Stimuli, exclude = NA)),  size = 0.1))+ 
+    geom_point(aes(x = (1:nrow(DUMMY_CODED_TASK_VARS)), y = 13, colour  = fct_inorder(factor(Other_Stimuli, exclude = NA)),  size = 0.1))+ 
+    labs(x = "Study Sample", y = "Task Parameter")+
+    scale_y_discrete(limits = factor(1:13), labels=c("Target Stimuli", "angry", "fearful", "happy", "neutral", "surprise", "sad", "disgust", "contempt", "positive", "Instructions", "Control_Stimuli", "Other_Stimuli"))+
+    theme(
+                panel.grid = element_blank(), #no grid
+                panel.border = element_blank(), #no border around the entire plot
+                axis.line.x.bottom = element_line(color = 'black'), #bottom border
+                axis.line.y.left   = element_line(color = 'black'), #left border
+                axis.line.y.right  = element_blank(), #no right border
+                legend.title = element_blank(),
+                legend.position = "right",
+                plot.title = element_text(),
+                panel.background = element_rect(fill = "white"),
+                aspect.ratio = 0.1/1,
+                axis.text.x = element_text(angle = 90))+
+  scale_colour_manual(values = col_vector, na.value = "transparent")+
+  scale_x_continuous(breaks=seq(0, 159, 5), expand = c(0.01,0.5))
+
+
+#ggsave('TaskVars.png', dpi = 300, height = 6, width = 30, unit = 'cm')
+
+
+```

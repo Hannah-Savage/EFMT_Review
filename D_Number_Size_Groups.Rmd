@@ -1,0 +1,144 @@
+---
+title: "Demographics"
+author: "HannahSavage"
+date: "2023-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## SET ENV
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+
+
+##DEFINE THEMES:
+#Demographics plot
+theme_demographics <- theme_bw() +
+  theme(
+    aspect.ratio = 1/3,
+    panel.grid = element_blank(), #no grid
+    panel.border = element_blank(), #no border around the entire plot
+    axis.line.x.bottom = element_line(color = 'black'), #bottom border
+    axis.line.y.left   = element_line(color = 'black'), #left border
+    axis.line.y.right  = element_blank(), #no right border
+    axis.text.y.right  = element_blank(),
+    legend.title = element_blank(),
+    plot.title = element_text(),
+    plot.margin = unit(c(1,1,2,1), "lines")
+  )
+
+```
+
+
+#Import the Data Extraction table:
+```{r}
+Extracted_data <- read_xlsx("C:/Users/hansav/Desktop/Data_extraction_CLEANING.xlsx", na=c(""," ", "NA","Patient group not of interest", "Patient group not of interest -Williams–Beuren syndrome"))
+#View(Extracted_data)
+Extracted_data<- Extracted_data[order(Extracted_data$Publication_Year),]        #order by publication year
+```
+
+#Sample Size:
+```{r}
+Sample_Size <- select(Extracted_data, c("Article_Num", "Publication_Year", colnames(Extracted_data)[grep("Sample_Size",colnames(Extracted_data))]))
+
+Sample_Size$Total <- rowSums(Sample_Size[ , c(3:8)], na.rm = T)
+Sample_Size$Total_C <- rowSums(Sample_Size[ , c(3:4,8)], na.rm = T)
+Sample_Size$Total_P <- rowSums(Sample_Size[ , c(5:7)], na.rm = T)
+Sample_Size_Desc <- describe(Sample_Size[c(3:11)])
+
+#Questions: 
+#Control groups - total participants, frequency of groups (sample size of groups)
+#Patient groups - total participants, frequency of groups (sample size of groups)
+```
+
+
+```{r}
+df <- data.frame(Sample_Size_Desc$mean, Sample_Size_Desc$n )
+```
+
+
+```{r}
+#Split dataset by whether a study has 1, 2 or 3 control groups 
+One_CG <- filter(Sample_Size, CG1_Sample_Size > 0 & is.na(CG2_Sample_Size) & is.na(CG3_Sample_Size))
+Two_CG <- filter(Sample_Size, CG1_Sample_Size > 0 & CG2_Sample_Size >0 & is.na(CG3_Sample_Size))
+Three_CG <-filter(Sample_Size, CG3_Sample_Size >0)
+
+One_CG_df <- describeBy(One_CG)
+Two_CG_df <- describeBy(Two_CG)
+Three_CG_df <- describeBy(Three_CG)
+
+One_CG_df
+Two_CG_df
+Three_CG_df
+```
+```{r}
+#How many articles
+Num_articles <- unique(round(Extracted_data$`Article_Num`))
+Total_num_articles <- length(Num_articles)
+Total_num_articles 
+
+#How many samples (as some articles have multiple samples presented)
+Num_samples <- unique(Extracted_data$`Article_Num`)
+Total_num_samples <- length(Num_samples)
+Total_num_samples
+
+# %of articles with 1, Control groups
+(One_CG_df['CG1_Sample_Size','n'] / Total_num_samples * 100)
+# %of articles with 2 Control groups
+Two_CG_df['CG2_Sample_Size','n']/ Total_num_samples *100
+# %of articles with  3 Control groups
+Three_CG_df['CG3_Sample_Size','n']/ Total_num_samples *100
+
+
+```
+
+
+
+```{r}
+Only_CG <- filter(Sample_Size, CG1_Sample_Size > 0 & is.na(PG1_Sample_Size) & is.na(PG2_Sample_Size) & is.na(PG3_Sample_Size))
+Inc_PG <- filter(Sample_Size, PG1_Sample_Size > 0)
+Control_only_articles <- unique(Only_CG$`Article_Num`)
+Patient_articles <- unique(Inc_PG$`Article_Num`)
+
+length(Control_only_articles)/ Total_num_samples * 100
+length(Patient_articles)/ Total_num_samples * 100
+
+```
+```{r}
+Inc_PG <- filter(Sample_Size, PG1_Sample_Size > 0)
+#Split dataset by whether a study has 1, 2 or 3 control groups 
+One_PG <- filter(Inc_PG, PG1_Sample_Size > 0 & is.na(PG2_Sample_Size) & is.na(PG3_Sample_Size))
+Two_PG <- filter(Inc_PG, PG1_Sample_Size > 0 & PG2_Sample_Size >0 & is.na(PG3_Sample_Size))
+Three_PG <-filter(Inc_PG, PG3_Sample_Size >0)
+
+One_PG_df <- describeBy(One_PG)
+Two_PG_df <- describeBy(Two_PG)
+Three_PG_df <- describeBy(Three_PG)
+
+One_PG_df
+Two_PG_df
+Three_PG_df
+```
+```{r}
+# %of Patient articles with 1 Patient groups
+(One_PG_df['PG1_Sample_Size','n'] / length(Patient_articles) * 100)
+# %of Patient articles with 2 Control groups
+Two_PG_df['PG2_Sample_Size','n']/ length(Patient_articles) *100
+# %of Patient articles with  3 Control groups
+Three_PG_df['PG3_Sample_Size','n']/ length(Patient_articles) *100
+
+```
+

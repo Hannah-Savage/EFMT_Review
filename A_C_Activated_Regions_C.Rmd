@@ -1,0 +1,1528 @@
+---
+title: "Activated_Regions"
+author: "HannahSavage"
+date: "2023-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Set env
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+#library('qgraph')
+library('data.table')
+library('reshape2')
+library('ade4')
+library('viridis')
+library(extrafont)
+library(ggalluvial)
+ 
+```
+
+#Import the Data table:
+#Select the columns that will be used
+```{r}
+FctC_clean <- read_excel("C:/Users/hansav/Desktop/Review_csv/FctC_clean.xlsx")
+FgtC_Activated <- select(FctC_clean,c('Article_Num','Publication_Year',
+                              "ROI_regions",
+                              "Controls:_Faces_>_Control",
+                              #"Controls:_Faces_>_Control_threshold", 
+                              "Whole_brain_threshold_coded",
+                              "ROI_threshold_coded"))
+
+colnames(FgtC_Activated) <- c("Article_Num", "Publication_Year", "ROI_regions", "FgtC_C", "WB_Th", "ROI_Th")
+```
+
+#Remove extra strings and make all lower case
+```{r}
+FgtC_Activated[FgtC_Activated == "NA"] <- NA
+FgtC_Activated <- FgtC_Activated %>%
+      mutate_at("ROI_regions", str_replace, "a priori: ", "")
+FgtC_Activated <- FgtC_Activated %>%
+      mutate_at("ROI_regions", str_replace, "post hoc: ", "")
+FgtC_Activated <- FgtC_Activated %>%
+      mutate_at("ROI_regions", str_replace, "data driven: ", "")
+
+FgtC_Activated$ROI_regions <- tolower(FgtC_Activated$ROI_regions)
+FgtC_Activated$FgtC_C <- tolower(FgtC_Activated$FgtC_C)
+
+```
+
+
+###THRESHOLD 1: ROI/SVC --> UNCORRECTED
+#Th1: Get complete list of ROIs that were used 
+```{r}
+#ROI Threshold 1: ROI/SVC - P uncorrected
+FgtC_Specified_ROI1 <- filter(FgtC_Activated, ROI_Th ==  1)
+Th1_ID <- FgtC_Specified_ROI1[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI1 <- separate(FgtC_Specified_ROI1, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI1[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th1: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI1 <- filter(FgtC_Activated, ROI_Th ==  1)
+FgtC_Activated_ROI1 <- separate(FgtC_Activated_ROI1, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+FgtC_Activated_ROI1 <- FgtC_Activated_ROI1 %>% mutate(across(where(is.character), str_trim))
+
+```
+
+#Th1: Code if an ROI was selected (Searched_ROI_Th1) and if it was reported as activated (Counts_ROI_Th1)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI1 <- select(FgtC_Specified_ROI1, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI1 <- select(FgtC_Activated_ROI1, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+
+#Create empty dataframe to store the counts
+Counts_ROI_Th1 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI1)))
+Searched_ROI_Th1 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI1)))
+colnames(Counts_ROI_Th1) <-  c(ROI_list)
+colnames(Searched_ROI_Th1) <-  c(ROI_list)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")
+
+for (n in 1:nrow(FgtC_Activated_ROI1)){       #for each row of the ROI_1 df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Specified_ROI1)[!is.na(FgtC_Specified_ROI1[n,])] #only select the ROIs that they said they were interested in
+  ROIs_Specified <- as.character(FgtC_Specified_ROI1[n, ColList])
+                        
+    for (c in ROIs_Specified){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+       if (grepl(GroupList[which(GroupList == group)], c)) { #If they searched for it, add a 1 to the the column in the df
+         #print(group)
+         Searched_ROI_Th1[n,group] <- (1)
+         
+          if (sum(grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI1[n,AllActivatedCols])) >= 1){ #if they reported it was active, add a 1 to the column in the df
+            Counts_ROI_Th1[n,group] <- (1)}
+            
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th1)
+
+Searched_ROI_Th1 <- mutate_all(Searched_ROI_Th1, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th1 <- mutate_all(Counts_ROI_Th1, function(x) as.numeric(as.character(x)))
+
+Counts_ROI_Th1[,c("Article_Num", "Publication_Year")] <- Th1_ID[,c("Article_Num", "Publication_Year")]
+Searched_ROI_Th1[,c("Article_Num", "Publication_Year")] <- Th1_ID[,c("Article_Num", "Publication_Year")]
+
+
+Th1 <- data.frame(matrix(ncol = length(ROI_list), nrow = 2))
+colnames(Th1) <-  c(ROI_list)
+row.names(Th1) <- c("Searched", "Activated")
+
+Th1[1,] <- colSums(Searched_ROI_Th1, na.rm = TRUE)
+Th1[2,] <- colSums(Counts_ROI_Th1, na.rm = TRUE)
+Th1[3,] <- Th1[2,]/Th1[1,]  * 100
+
+
+write.csv(Th1, "M:/Documents/Hariri_review/Data_Vis/Th1.csv", row.names=TRUE)
+
+```
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(ROIs_Specified)
+rm(Th1_ID)
+#rm(Headings_Active)
+```
+
+
+###THRESHOLD 2: ROI/SVC --> FDR corrected
+#Th2: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 2: ROI/SVC --> FDR corrected
+FgtC_Specified_ROI2 <- filter(FgtC_Activated, ROI_Th ==  2)
+Th2_ID <- FgtC_Specified_ROI2[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI2 <- separate(FgtC_Specified_ROI2, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI2[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20",
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                 id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th2: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI2 <- filter(FgtC_Activated, ROI_Th ==  2)
+FgtC_Activated_ROI2 <- separate(FgtC_Activated_ROI2, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+FgtC_Activated_ROI2 <- FgtC_Activated_ROI2 %>% mutate(across(where(is.character), str_trim))
+
+```
+#Th2: Code if an ROI was selected (Searched_ROI_Th1) and if it was reported as activated (Counts_ROI_Th1)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI2 <- select(FgtC_Specified_ROI2, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI2 <- select(FgtC_Activated_ROI2, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+
+#Create empty dataframe to store the counts
+Counts_ROI_Th2 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI2)))
+Searched_ROI_Th2 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI2)))
+colnames(Counts_ROI_Th2) <-  c(ROI_list)
+colnames(Searched_ROI_Th2) <-  c(ROI_list)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")
+
+for (n in 1:nrow(FgtC_Specified_ROI2)){       #for each row of the ROI_1 df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Specified_ROI2)[!is.na(FgtC_Specified_ROI2[n,])] #only select the ROIs that they said they were interested in
+  ROIs_Specified <- as.character(FgtC_Specified_ROI2[n, ColList])
+                        
+    for (c in ROIs_Specified){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+       if (grepl(GroupList[which(GroupList == group)], c)) { #If they searched for it, add a 1 to the the column in the df
+         #print(group)
+         Searched_ROI_Th2[n,group] <- (1)
+         
+          if (sum(grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI2[n,AllActivatedCols])) >= 1){ #if they reported it was active, add a 1 to the column in the df
+            Counts_ROI_Th2[n,group] <- (1)}
+            
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th1)
+
+Searched_ROI_Th2 <- mutate_all(Searched_ROI_Th2, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th2 <- mutate_all(Counts_ROI_Th2, function(x) as.numeric(as.character(x)))
+
+Counts_ROI_Th2[,c("Article_Num", "Publication_Year")] <- Th2_ID[,c("Article_Num", "Publication_Year")]
+Searched_ROI_Th2[,c("Article_Num", "Publication_Year")] <- Th2_ID[,c("Article_Num", "Publication_Year")]
+
+
+Th2 <- data.frame(matrix(ncol = length(ROI_list), nrow = 2))
+colnames(Th2) <-  c(ROI_list)
+row.names(Th2) <- c("Searched", "Activated")
+
+Th2[1,] <- colSums(Searched_ROI_Th2, na.rm = TRUE)
+Th2[2,] <- colSums(Counts_ROI_Th2, na.rm = TRUE)
+Th2[3,] <- Th2[2,]/Th2[1,]  * 100
+
+write.csv(Th2, "M:/Documents/Hariri_review/Data_Vis/Th2.csv", row.names=TRUE)
+
+
+```
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(ROIs_Specified)
+rm(Th2_ID)
+#rm(Headings_Active)
+```
+
+###THRESHOLD 3: ROI/SVC --> FWE corrected + Simulation
+
+#Th3: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 3: ROI/SVC --> FWE corrected + Simulation
+FgtC_Specified_ROI3 <- filter(FgtC_Activated, ROI_Th == 3)
+Th3_ID <- FgtC_Specified_ROI3[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI3 <- separate(FgtC_Specified_ROI3, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI3[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")],
+                 id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th3: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI3 <- filter(FgtC_Activated, ROI_Th ==  3)
+FgtC_Activated_ROI3 <- separate(FgtC_Activated_ROI3, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI3 <- FgtC_Activated_ROI3 %>% mutate(across(where(is.character), str_trim))
+
+```
+
+#Th3: Code if an ROI was selected (Searched_ROI_Th1) and if it was reported as activated (Counts_ROI_Th1)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI3 <- select(FgtC_Specified_ROI3, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI3 <- select(FgtC_Activated_ROI3, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+
+#Create empty dataframe to store the counts
+Counts_ROI_Th3 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI3)))
+Searched_ROI_Th3 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI3)))
+colnames(Counts_ROI_Th3) <-  c(ROI_list)
+colnames(Searched_ROI_Th3) <-  c(ROI_list)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Specified_ROI3)){       #for each row of the ROI_1 df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Specified_ROI3)[!is.na(FgtC_Specified_ROI3[n,])] #only select the ROIs that they said they were interested in
+  ROIs_Specified <- as.character(FgtC_Specified_ROI3[n, ColList])
+                        
+    for (c in ROIs_Specified){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+       if (grepl(GroupList[which(GroupList == group)], c)) { #If they searched for it, add a 1 to the the column in the df
+         #print(group)
+         Searched_ROI_Th3[n,group] <- (1)
+         
+          if (sum(grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI3[n,AllActivatedCols])) >= 1){ #if they reported it was active, add a 1 to the column in the df
+            Counts_ROI_Th3[n,group] <- (1)}
+            
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th1)
+
+Searched_ROI_Th3 <- mutate_all(Searched_ROI_Th3, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th3 <- mutate_all(Counts_ROI_Th3, function(x) as.numeric(as.character(x)))
+
+Counts_ROI_Th3[,c("Article_Num", "Publication_Year")] <- Th3_ID[,c("Article_Num", "Publication_Year")]
+Searched_ROI_Th3[,c("Article_Num", "Publication_Year")] <- Th3_ID[,c("Article_Num", "Publication_Year")]
+
+
+Th3 <- data.frame(matrix(ncol = length(ROI_list), nrow = 2))
+colnames(Th3) <-  c(ROI_list)
+row.names(Th3) <- c("Searched", "Activated")
+
+Th3[1,] <- colSums(Searched_ROI_Th3, na.rm = TRUE)
+Th3[2,] <- colSums(Counts_ROI_Th3, na.rm = TRUE)
+Th3[3,] <- Th3[2,]/Th3[1,]  * 100
+
+write.csv(Th3, "M:/Documents/Hariri_review/Data_Vis/Th3.csv", row.names=TRUE)
+
+```
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(ROIs_Specified)
+rm(Th3_ID)
+#rm(Headings_Active)
+```
+
+
+###THRESHOLD 4: ROI/SVC --> Other (unspecified multiple corrections)
+
+#Th4: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 4: ROI/SVC --> Other (unspecified multiple corrections)
+FgtC_Specified_ROI4 <- filter(FgtC_Activated, ROI_Th == 4)
+Th4_ID <- FgtC_Specified_ROI4[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI4 <- separate(FgtC_Specified_ROI4, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                                                              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                              "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI4[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                                                              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                              "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")],
+                 id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th4: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI4 <- filter(FgtC_Activated, ROI_Th ==  4)
+FgtC_Activated_ROI4 <- separate(FgtC_Activated_ROI4, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI4 <- FgtC_Activated_ROI4 %>% mutate(across(where(is.character), str_trim))
+
+```
+
+#Th4: Code if an ROI was selected (Searched_ROI_Th4) and if it was reported as activated (Counts_ROI_Th4)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI4 <- select(FgtC_Specified_ROI4, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI4 <- select(FgtC_Activated_ROI4, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+
+#Create empty dataframe to store the counts
+Counts_ROI_Th4 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI4)))
+Searched_ROI_Th4 <- data.frame(matrix(ncol = length(ROI_list), nrow = nrow(FgtC_Activated_ROI4)))
+colnames(Counts_ROI_Th4) <-  c(ROI_list)
+colnames(Searched_ROI_Th4) <-  c(ROI_list)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Specified_ROI4)){       #for each row of the ROI_1 df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Specified_ROI4)[!is.na(FgtC_Specified_ROI4[n,])] #only select the ROIs that they said they were interested in
+  ROIs_Specified <- as.character(FgtC_Specified_ROI4[n, ColList])
+                        
+    for (c in ROIs_Specified){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+       if (grepl(GroupList[which(GroupList == group)], c)) { #If they searched for it, add a 1 to the the column in the df
+         #print(group)
+         Searched_ROI_Th4[n,group] <- (1)
+         
+          if (sum(grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI4[n,AllActivatedCols])) >= 1){ #if they reported it was active, add a 1 to the column in the df
+            Counts_ROI_Th4[n,group] <- (1)}
+            
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th1)
+
+Searched_ROI_Th4 <- mutate_all(Searched_ROI_Th4, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th4 <- mutate_all(Counts_ROI_Th4, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th4[,c("Article_Num", "Publication_Year")] <- Th4_ID[,c("Article_Num", "Publication_Year")]
+Searched_ROI_Th4[,c("Article_Num", "Publication_Year")] <- Th4_ID[,c("Article_Num", "Publication_Year")]
+
+
+
+Th4 <- data.frame(matrix(ncol = length(ROI_list), nrow = 2))
+colnames(Th4) <-  c(ROI_list)
+row.names(Th4) <- c("Searched", "Activated")
+
+Th4[1,] <- colSums(Searched_ROI_Th4, na.rm = TRUE)
+Th4[2,] <- colSums(Counts_ROI_Th4, na.rm = TRUE)
+Th4[3,] <- Th4[2,]/Th4[1,]  * 100
+
+write.csv(Th4, "M:/Documents/Hariri_review/Data_Vis/Th4.csv", row.names=TRUE)
+
+```
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(ROIs_Specified)
+rm(Th4_ID)
+#rm(Headings_Active)
+```
+
+
+#Create a combined ROI count file to remove from whole brain results.
+```{r}
+Combined_ROIs <- bind_rows(Searched_ROI_Th1,Searched_ROI_Th2,Searched_ROI_Th3,Searched_ROI_Th4)
+```
+
+
+
+###THRESHOLD 5: WHOLE BRAIN --> Uncorrected
+
+#Th5: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 5: WHOLE BRAIN --> Uncorrected
+FgtC_Specified_ROI5 <- filter(FgtC_Activated, WB_Th == 5)
+Th5_ID <- FgtC_Specified_ROI5[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI5 <- separate(FgtC_Specified_ROI5, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI5[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th5: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI5 <- filter(FgtC_Activated, WB_Th ==  5)
+FgtC_Activated_ROI5 <- separate(FgtC_Activated_ROI5, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI5 <- FgtC_Activated_ROI5 %>% mutate(across(where(is.character), str_trim))
+
+
+#make into long format
+Headings_Active <- melt(FgtC_Activated_ROI5[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                          "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings_Active$value <- str_trim(Headings_Active$value, side = c("both", "left", "right"))
+
+Active_List <- sort(unique(Headings_Active$value))
+
+```
+
+
+#Th5: Code which regions were reported as activated (Counts_ROI_Th5)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI5 <- select(FgtC_Specified_ROI5, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI5 <- select(FgtC_Activated_ROI5, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = Active_List #Instead of searching within the Regions that were 
+
+#Create empty data frame to store the counts
+Counts_ROI_Th5 <- data.frame(matrix(ncol = length(Active_List), nrow = nrow(FgtC_Activated_ROI5)))
+colnames(Counts_ROI_Th5) <-  c(Active_List)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Activated_ROI5)){       #for each row of the Activated df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Activated_ROI5)[!is.na(FgtC_Activated_ROI5[n,])] #only select the Activated columns that have
+
+      for (c in ColList){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+
+       if (grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI5[n,c])) { #If they said it was activated add a 1 to the the column in the df
+         #print(group)
+         Counts_ROI_Th5[n,group] <- (1)
+         
+          #if (sum(grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI5[n,AllActivatedCols])) >= 1){ #if they reported it was active, add a 1 to the column in the df
+          #  Counts_ROI_Th5[n,group] <- (1)}
+            
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th5)
+Counts_ROI_Th5 <- mutate_all(Counts_ROI_Th5, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th5[,c("Article_Num", "Publication_Year")] <- Th5_ID[,c("Article_Num", "Publication_Year")]
+```
+
+#Th5: Remove activated regions if they were from an ROI analysis (Combined_ROIs)
+```{r}
+Article_Nums <- Counts_ROI_Th5[,c("Article_Num")]
+
+for (a in Article_Nums){
+    #print(paste0("Article_Num =", a))
+  if (a %in% Combined_ROIs$Article_Num){
+      r = which(Combined_ROIs$Article_Num %in% a)
+      q = which(Counts_ROI_Th5$Article_Num %in% a)
+      #print(paste0("It is row ", r, " of the Combined ROI file, and row ", q, "of the Th5 Counts"))
+      
+      for (c in colnames(Combined_ROIs)){
+        if(is.na(Combined_ROIs[r,c])){         #If it is not empty in the ROI or the Counts list (i.e. they searched for it and found it)
+             next                         #Code as ROI
+        } 
+      else {
+        #print(paste0(c, " is where they have searched for"))    
+        Counts_ROI_Th5[q,c] <- "ROI"}  
+      }
+   }
+  
+  else {  
+    #print("This study did not use an ROI")
+  }
+}
+#Save version with ROIs indicated
+Counts_ROI_Th5_wROI <- Counts_ROI_Th5
+
+#Remove ROIs and count 
+Counts_ROI_Th5[Counts_ROI_Th5 == "ROI"] <- NA
+
+Counts_ROI_Th5<- mutate_all(Counts_ROI_Th5, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th5[,c("Article_Num", "Publication_Year")] <- Th5_ID[,c("Article_Num", "Publication_Year")] #Re-fill this in as some got removed during "ROI" removing
+
+Th5 <- data.frame(matrix(ncol = length(Active_List), nrow = 2))
+colnames(Th5) <-  c(Active_List)
+row.names(Th5) <- c("Applied", "Activated")
+
+Th5[1,] <- nrow(FgtC_Activated_ROI5)
+Th5[2,] <- colSums(Counts_ROI_Th5, na.rm = TRUE)
+Th5[3,] <- Th5[1,]/nrow(Counts_ROI_Th5) * 100
+
+
+
+
+write.csv(Th5, "M:/Documents/Hariri_review/Data_Vis/Th5.csv", row.names=TRUE)
+
+```
+
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(Th5_ID)
+rm(Headings_Active)
+```
+
+
+
+###THRESHOLD 6: WHOLE BRAIN --> FDR corrected
+
+#Th6: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 6: WHOLE BRAIN --> Uncorrected
+FgtC_Specified_ROI6 <- filter(FgtC_Activated, WB_Th == 6)
+Th6_ID <- FgtC_Specified_ROI6[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI6 <- separate(FgtC_Specified_ROI6, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI6[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th6: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI6 <- filter(FgtC_Activated, WB_Th ==  6)
+FgtC_Activated_ROI6 <- separate(FgtC_Activated_ROI6, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI6 <- FgtC_Activated_ROI6 %>% mutate(across(where(is.character), str_trim))
+
+
+#make into long format
+Headings_Active <- melt(FgtC_Activated_ROI6[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings_Active$value <- str_trim(Headings_Active$value, side = c("both", "left", "right"))
+
+Active_List <- sort(unique(Headings_Active$value))
+
+```
+
+
+#Th6: Code which regions were reported as activated (Counts_ROI_Th5)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI6 <- select(FgtC_Specified_ROI6, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI6 <- select(FgtC_Activated_ROI6, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+GroupList = Active_List #Instead of searching within the Regions that were 
+
+#Create empty data frame to store the counts
+Counts_ROI_Th6 <- data.frame(matrix(ncol = length(Active_List), nrow = nrow(FgtC_Activated_ROI6)))
+colnames(Counts_ROI_Th6) <-  c(Active_List)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Activated_ROI6)){       #for each row of the Activated df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Activated_ROI6)[!is.na(FgtC_Activated_ROI6[n,])] #only select the Activated columns that have
+
+      for (c in ColList){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+
+       if (grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI6[n,c])) { #If they said it was activated add a 1 to the the column in the df
+         #print(group)
+         Counts_ROI_Th6[n,group] <- (1)
+
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th5)
+Counts_ROI_Th6 <- mutate_all(Counts_ROI_Th6, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th6[,c("Article_Num", "Publication_Year")] <- Th6_ID[,c("Article_Num", "Publication_Year")]
+```
+
+
+#Th6: Remove activated regions if they were from an ROI analysis (Combined_ROIs)
+```{r}
+Article_Nums <- Counts_ROI_Th6[,c("Article_Num")]
+
+for (a in Article_Nums){
+    #print(paste0("Article_Num =", a))
+  if (a %in% Combined_ROIs$Article_Num){
+      r = which(Combined_ROIs$Article_Num %in% a)
+      q = which(Counts_ROI_Th6$Article_Num %in% a)
+      #print(paste0("It is row ", r, " of the Combined ROI file, and row ", q, "of the Th6 Counts"))
+      
+      for (c in colnames(Combined_ROIs)){
+        if(is.na(Combined_ROIs[r,c])){         #If it is not empty in the ROI or the Counts list (i.e. they searched for it and found it)
+             next                         #Code as ROI
+        } 
+      else {
+        #print(paste0(c, " is where they have searched for"))    
+        Counts_ROI_Th6[q,c] <- "ROI"}  
+      }
+   }
+  
+  else {  
+    #print("This study did not use an ROI")
+  }
+}
+#Save version with ROIs indicated
+Counts_ROI_Th6_wROI <- Counts_ROI_Th6
+
+#Remove ROIs and count 
+Counts_ROI_Th6[Counts_ROI_Th6 == "ROI"] <- NA
+
+Counts_ROI_Th6<- mutate_all(Counts_ROI_Th6, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th6[,c("Article_Num", "Publication_Year")] <- Th6_ID[,c("Article_Num", "Publication_Year")] #Re-fill this in as some got removed during "ROI" removing
+
+Th6 <- data.frame(matrix(ncol = length(Active_List), nrow = 2))
+colnames(Th6) <-  c(Active_List)
+row.names(Th6) <- c("Applied", "Activated")
+
+Th6[1,] <- nrow(FgtC_Activated_ROI6)
+Th6[2,] <- colSums(Counts_ROI_Th6, na.rm = TRUE)
+Th6[3,] <- Th6[1,]/nrow(Counts_ROI_Th6) * 100
+
+
+write.csv(Th6, "M:/Documents/Hariri_review/Data_Vis/Th6.csv", row.names=TRUE)
+
+```
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(Th6_ID)
+rm(Headings_Active)
+```
+
+
+
+
+###THRESHOLD 7: Whole brain --> FWE corrected + Simulation
+
+#Th7: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 5: WHOLE BRAIN --> Uncorrected
+FgtC_Specified_ROI7 <- filter(FgtC_Activated, WB_Th == 7)
+Th7_ID <- FgtC_Specified_ROI7[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI7 <- separate(FgtC_Specified_ROI7, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI7[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th7: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI7 <- filter(FgtC_Activated, WB_Th ==  7)
+FgtC_Activated_ROI7 <- separate(FgtC_Activated_ROI7, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI7 <- FgtC_Activated_ROI7 %>% mutate(across(where(is.character), str_trim))
+
+
+#make into long format
+Headings_Active <- melt(FgtC_Activated_ROI7[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings_Active$value <- str_trim(Headings_Active$value, side = c("both", "left", "right"))
+
+Active_List <- sort(unique(Headings_Active$value))
+
+```
+
+
+#Th7: Code which regions were reported as activated (Counts_ROI_Th5)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI7 <- select(FgtC_Specified_ROI7, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI7 <- select(FgtC_Activated_ROI7, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+GroupList = Active_List #Instead of searching within the Regions that were 
+
+#Create empty data frame to store the counts
+Counts_ROI_Th7 <- data.frame(matrix(ncol = length(Active_List), nrow = nrow(FgtC_Activated_ROI7)))
+colnames(Counts_ROI_Th7) <-  c(Active_List)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Activated_ROI7)){       #for each row of the Activated df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Activated_ROI7)[!is.na(FgtC_Activated_ROI7[n,])] #only select the Activated columns that have
+
+      for (c in ColList){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+
+       if (grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI7[n,c])) { #If they said it was activated add a 1 to the the column in the df
+         #print(group)
+         Counts_ROI_Th7[n,group] <- (1)
+
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th5)
+Counts_ROI_Th7 <- mutate_all(Counts_ROI_Th7, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th7[,c("Article_Num", "Publication_Year")] <- Th7_ID[,c("Article_Num", "Publication_Year")]
+```
+
+
+#Th7: Remove activated regions if they were from an ROI analysis (Combined_ROIs)
+```{r}
+Article_Nums <- Counts_ROI_Th7[,c("Article_Num")]
+
+for (a in Article_Nums){
+    #print(paste0("Article_Num =", a))
+  if (a %in% Combined_ROIs$Article_Num){
+      r = which(Combined_ROIs$Article_Num %in% a)
+      q = which(Counts_ROI_Th7$Article_Num %in% a)
+      #print(paste0("It is row ", r, " of the Combined ROI file, and row ", q, "of the Th7 Counts"))
+      
+      for (c in colnames(Combined_ROIs)){
+        if(is.na(Combined_ROIs[r,c])){         #If it is not empty in the ROI or the Counts list (i.e. they searched for it and found it)
+             next                         #Code as ROI
+        } 
+      else {
+        #print(paste0(c, " is where they have searched for"))    
+        Counts_ROI_Th7[q,c] <- "ROI"}  
+      }
+   }
+  
+  else {  
+    #print("This study did not use an ROI")
+  }
+}
+#Save version with ROIs indicated
+Counts_ROI_Th7_wROI <- Counts_ROI_Th7
+
+#Remove ROIs and count 
+Counts_ROI_Th7[Counts_ROI_Th7 == "ROI"] <- NA
+
+Counts_ROI_Th7<- mutate_all(Counts_ROI_Th7, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th7[,c("Article_Num", "Publication_Year")] <- Th7_ID[,c("Article_Num", "Publication_Year")] #Re-fill this in as some got removed during "ROI" removing
+
+Th7 <- data.frame(matrix(ncol = length(Active_List), nrow = 2))
+colnames(Th7) <-  c(Active_List)
+row.names(Th7) <- c("Applied", "Activated")
+
+Th7[1,] <- nrow(FgtC_Activated_ROI7)
+Th7[2,] <- colSums(Counts_ROI_Th7, na.rm = TRUE)
+Th7[3,] <- Th7[1,]/nrow(Counts_ROI_Th7) * 100
+
+
+write.csv(Th7, "M:/Documents/Hariri_review/Data_Vis/Th7.csv", row.names=TRUE)
+
+```
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(Th7_ID)
+rm(Headings_Active)
+```
+
+
+###THRESHOLD 8: Whole brain --> Other (unspecified multiple corrections)
+
+#Th8: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 5: WHOLE BRAIN --> Uncorrected
+FgtC_Specified_ROI8 <- filter(FgtC_Activated, WB_Th == 8)
+Th8_ID <- FgtC_Specified_ROI8[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI8 <- separate(FgtC_Specified_ROI8, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI8[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th8: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI8 <- filter(FgtC_Activated, WB_Th ==  8)
+FgtC_Activated_ROI8 <- separate(FgtC_Activated_ROI8, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI8 <- FgtC_Activated_ROI8 %>% mutate(across(where(is.character), str_trim))
+
+
+#make into long format
+Headings_Active <- melt(FgtC_Activated_ROI8[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                          "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings_Active$value <- str_trim(Headings_Active$value, side = c("both", "left", "right"))
+
+Active_List <- sort(unique(Headings_Active$value))
+
+```
+
+
+#Th8: Code which regions were reported as activated (Counts_ROI_Th5)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI8 <- select(FgtC_Specified_ROI8, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI8 <- select(FgtC_Activated_ROI8, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+GroupList = Active_List #Instead of searching within the Regions that were 
+
+#Create empty data frame to store the counts
+Counts_ROI_Th8 <- data.frame(matrix(ncol = length(Active_List), nrow = nrow(FgtC_Activated_ROI8)))
+colnames(Counts_ROI_Th8) <-  c(Active_List)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+              "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+             "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+             "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Activated_ROI8)){       #for each row of the Activated df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Activated_ROI8)[!is.na(FgtC_Activated_ROI8[n,])] #only select the Activated columns that have
+
+      for (c in ColList){                         #for the ROIs that they said they were interested in
+      #print(c)
+      for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+
+       if (grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI8[n,c])) { #If they said it was activated add a 1 to the the column in the df
+         #print(group)
+         Counts_ROI_Th8[n,group] <- (1)
+
+        }
+      }
+    }
+}
+
+#Mutate and put into a neat df (Th5)
+Counts_ROI_Th8 <- mutate_all(Counts_ROI_Th8, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th8[,c("Article_Num", "Publication_Year")] <- Th8_ID[,c("Article_Num", "Publication_Year")]
+```
+
+
+#Th8: Remove activated regions if they were from an ROI analysis (Combined_ROIs)
+```{r}
+Article_Nums <- Counts_ROI_Th8[,c("Article_Num")]
+
+for (a in Article_Nums){
+    #print(paste0("Article_Num =", a))
+  if (a %in% Combined_ROIs$Article_Num){
+      r = which(Combined_ROIs$Article_Num %in% a)
+      q = which(Counts_ROI_Th8$Article_Num %in% a)
+      #print(paste0("It is row ", r, " of the Combined ROI file, and row ", q, "of the Th8 Counts"))
+      
+      for (c in colnames(Combined_ROIs)){
+        if(is.na(Combined_ROIs[r,c])){         #If it is not empty in the ROI or the Counts list (i.e. they searched for it and found it)
+             next                         #Code as ROI
+        } 
+      else {
+        #print(paste0(c, " is where they have searched for"))    
+        Counts_ROI_Th8[q,c] <- "ROI"}  
+      }
+   }
+  
+  else {  
+    #print("This study did not use an ROI")
+  }
+}
+#Save version with ROIs indicated
+Counts_ROI_Th8_wROI <- Counts_ROI_Th8
+
+#Remove ROIs and count 
+Counts_ROI_Th8[Counts_ROI_Th8 == "ROI"] <- NA
+
+Counts_ROI_Th8<- mutate_all(Counts_ROI_Th8, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th8[,c("Article_Num", "Publication_Year")] <- Th8_ID[,c("Article_Num", "Publication_Year")] #Re-fill this in as some got removed during "ROI" removing
+
+Th8 <- data.frame(matrix(ncol = length(Active_List), nrow = 2))
+colnames(Th8) <-  c(Active_List)
+row.names(Th8) <- c("Applied", "Activated")
+
+Th8[1,] <- nrow(FgtC_Activated_ROI8)
+Th8[2,] <- colSums(Counts_ROI_Th8, na.rm = TRUE)
+Th8[3,] <- Th8[1,]/nrow(Counts_ROI_Th8) * 100
+
+
+write.csv(Th8, "M:/Documents/Hariri_review/Data_Vis/Th8.csv", row.names=TRUE)
+
+```
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(Th8_ID)
+rm(Headings_Active)
+```
+
+
+
+###THRESHOLD 9: Other
+
+#Th9: Get complete list of ROIs that were used
+```{r}
+#ROI Threshold 9: WHOLE BRAIN --> Uncorrected
+FgtC_Specified_ROI9 <- filter(FgtC_Activated, WB_Th == 9)
+Th9_ID <- FgtC_Specified_ROI9[,c("Article_Num", "Publication_Year")]
+
+###GET ROIs THAT STUDIES SPECIFIED:
+#make columns based on the ROIs specified
+FgtC_Specified_ROI9 <- separate(FgtC_Specified_ROI9, c(ROI_regions), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10","Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30"), sep = ',')
+
+#make into long format
+Headings <- melt(FgtC_Specified_ROI9[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10",
+                                        "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                        "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30")], 
+                 id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings$value <- str_trim(Headings$value, side = c("both", "left", "right"))
+
+#make list of unique ROIs for the headings string matching columns/counts
+ROI_list <- sort(unique(Headings$value))
+```
+
+#Th9: Split the reported activation
+```{r}
+###GET ROIs THAT STUDIES REPORTED AS ACTIVATED:
+FgtC_Activated_ROI9 <- filter(FgtC_Activated, WB_Th == 9)
+FgtC_Activated_ROI9 <- separate(FgtC_Activated_ROI9, c(FgtC_C), into = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                                                         "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                                                         "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                                                         "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40"), sep = ',')
+FgtC_Activated_ROI9 <- FgtC_Activated_ROI9 %>% mutate(across(where(is.character), str_trim))
+
+
+#make into long format
+Headings_Active <- melt(FgtC_Activated_ROI9[,c('Article_Num','Publication_Year',"Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                                               "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                                               "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30", 
+                                               "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")], id.vars=c('Article_Num','Publication_Year'), var='ROI_specified')
+
+Headings_Active$value <- str_trim(Headings_Active$value, side = c("both", "left", "right"))
+
+Active_List <- sort(unique(Headings_Active$value))
+
+```
+
+
+#Th9: Code which regions were reported as activated (Counts_ROI_Th5)
+```{r}
+#Remove extra columns from Specified + Activated
+FgtC_Specified_ROI9 <- select(FgtC_Specified_ROI9, -c(Article_Num, Publication_Year, FgtC_C, WB_Th, ROI_Th))
+FgtC_Activated_ROI9 <- select(FgtC_Activated_ROI9, -c(Article_Num, Publication_Year, ROI_regions, WB_Th, ROI_Th))
+
+GroupList = ROI_list
+GroupList = Active_List #Instead of searching within the Regions that were 
+
+#Create empty data frame to store the counts
+Counts_ROI_Th9 <- data.frame(matrix(ncol = length(Active_List), nrow = nrow(FgtC_Activated_ROI9)))
+colnames(Counts_ROI_Th9) <-  c(Active_List)
+
+
+AllActivatedCols = c("Region1", "Region2", "Region3", "Region4", "Region5", "Region6", "Region7", "Region8", "Region9", "Region10", 
+                     "Region11", "Region12", "Region13", "Region14", "Region15", "Region16", "Region17", "Region18", "Region19", "Region20", 
+                     "Region21", "Region22", "Region23", "Region24", "Region25", "Region26", "Region27", "Region28", "Region29", "Region30",
+                     "Region31",  "Region32", "Region33", "Region34", "Region35", "Region36", "Region37", "Region38", "Region39", "Region40")
+
+for (n in 1:nrow(FgtC_Activated_ROI9)){       #for each row of the Activated df
+  #print(as.integer(n)) 
+  ColList <- names(FgtC_Activated_ROI9)[!is.na(FgtC_Activated_ROI9[n,])] #only select the Activated columns that have
+  
+  for (c in ColList){                         #for the ROIs that they said they were interested in
+    #print(c)
+    for (group in GroupList){                       #find the string match (column names based on all ROIs mentioned)
+      #print(group)
+      
+      if (grepl(GroupList[which(GroupList == group)], FgtC_Activated_ROI9[n,c])) { #If they said it was activated add a 1 to the the column in the df
+        #print(group)
+        Counts_ROI_Th9[n,group] <- (1)
+        
+      }
+    }
+  }
+}
+
+#Mutate and put into a neat df (Th5)
+Counts_ROI_Th9 <- mutate_all(Counts_ROI_Th9, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th9[,c("Article_Num", "Publication_Year")] <- Th9_ID[,c("Article_Num", "Publication_Year")]
+```
+
+
+#Th9: Remove activated regions if they were from an ROI analysis (Combined_ROIs)
+```{r}
+Article_Nums <- Counts_ROI_Th9[,c("Article_Num")]
+
+for (a in Article_Nums){
+  #print(paste0("Article_Num =", a))
+  if (a %in% Combined_ROIs$Article_Num){
+    r = which(Combined_ROIs$Article_Num %in% a)
+    q = which(Counts_ROI_Th9$Article_Num %in% a)
+    #print(paste0("It is row ", r, " of the Combined ROI file, and row ", q, "of the Th9 Counts"))
+    
+    for (c in colnames(Combined_ROIs)){
+      if(is.na(Combined_ROIs[r,c])){         #If it is not empty in the ROI or the Counts list (i.e. they searched for it and found it)
+        next                         #Code as ROI
+      } 
+      else {
+        #print(paste0(c, " is where they have searched for"))    
+        Counts_ROI_Th9[q,c] <- "ROI"}  
+    }
+  }
+  
+  else {  
+    #print("This study did not use an ROI")
+  }
+}
+#Save version with ROIs indicated
+Counts_ROI_Th9_wROI <- Counts_ROI_Th9
+
+#Remove ROIs and count 
+Counts_ROI_Th9[Counts_ROI_Th9 == "ROI"] <- NA
+
+Counts_ROI_Th9<- mutate_all(Counts_ROI_Th9, function(x) as.numeric(as.character(x)))
+Counts_ROI_Th9[,c("Article_Num", "Publication_Year")] <- Th9_ID[,c("Article_Num", "Publication_Year")] #Re-fill this in as some got removed during "ROI" removing
+
+Th9 <- data.frame(matrix(ncol = length(Active_List), nrow = 2))
+colnames(Th9) <-  c(Active_List)
+row.names(Th9) <- c("Applied", "Activated")
+
+Th9[1,] <- nrow(FgtC_Activated_ROI9)
+Th9[2,] <- colSums(Counts_ROI_Th9, na.rm = TRUE)
+Th9[3,] <- Th9[1,]/nrow(Counts_ROI_Th9) * 100
+
+
+write.csv(Th9, "M:/Documents/Hariri_review/Data_Vis/Th9.csv", row.names=TRUE)
+
+```
+
+```{r}
+#Clean the workspace: 
+rm(Headings)
+rm(GroupList)
+rm(ColList)
+rm(Th9_ID)
+rm(Headings_Active)
+```
+
+
+
+```{r}
+#Transform all ThX dataframes
+Th1_t <- as.data.frame(t(Th1))
+Th1_t$names <- rownames(Th1_t)
+Th1_t <- Th1_t[order(Th1_t$Searched, Th1_t$Activated, decreasing=TRUE),]
+Th1_t$names <- factor(Th1_t$names, levels = Th1_t$names)
+names(Th1_t) <- c("Th1_Searched", "Th1_Activated", "Th1_Perc", "names")
+
+Th2_t <- as.data.frame(t(Th2))
+Th2_t$names <- rownames(Th2_t)
+Th2_t <- Th2_t[order(Th2_t$Searched, Th2_t$Activated, decreasing=TRUE),]
+Th2_t$names <- factor(Th2_t$names, levels = Th2_t$names)
+names(Th2_t) <- c("Th2_Searched", "Th2_Activated", "Th2_Perc", "names")
+
+Th3_t <- as.data.frame(t(Th3))
+Th3_t$names <- rownames(Th3_t)
+Th3_t <- Th3_t[order(Th3_t$Searched, Th3_t$Activated, decreasing=TRUE),]
+Th3_t$names <- factor(Th3_t$names, levels = Th3_t$names)
+names(Th3_t) <- c("Th3_Searched", "Th3_Activated", "Th3_Perc", "names")
+
+
+Th4_t <- as.data.frame(t(Th4))
+Th4_t$names <- rownames(Th4_t)
+Th4_t <- Th4_t[order(Th4_t$Searched, Th4_t$Activated, decreasing=TRUE),]
+Th4_t$names <- factor(Th4_t$names, levels = Th4_t$names)
+names(Th4_t) <- c("Th4_Searched", "Th4_Activated", "Th4_Perc", "names")
+
+
+Th5_t <- as.data.frame(t(Th5))
+Th5_t$names <- rownames(Th5_t)
+Th5_t <- Th5_t[order(Th5_t$Activated, decreasing=TRUE),]
+Th5_t$names <- factor(Th5_t$names, levels = Th5_t$names)
+names(Th5_t) <- c("Th5_Applied","Th5_Activated", "Th5_Perc", "names")
+
+
+Th6_t <- as.data.frame(t(Th6))
+Th6_t$names <- rownames(Th6_t)
+Th6_t <- Th6_t[order(Th6_t$Activated, decreasing=TRUE),]
+Th6_t$names <- factor(Th6_t$names, levels = Th6_t$names)
+names(Th6_t) <- c("Th6_Applied","Th6_Activated", "Th6_Perc", "names")
+
+
+Th7_t <- as.data.frame(t(Th7))
+Th7_t$names <- rownames(Th7_t)
+Th7_t <- Th7_t[order(Th7_t$Activated, decreasing=TRUE),]
+Th7_t$names <- factor(Th7_t$names, levels = Th7_t$names)
+names(Th7_t) <- c("Th7_Applied","Th7_Activated", "Th7_Perc", "names")
+
+
+Th8_t <- as.data.frame(t(Th8))
+Th8_t$names <- rownames(Th8_t)
+Th8_t <- Th8_t[order(Th8_t$Activated, decreasing=TRUE),]
+Th8_t$names <- factor(Th8_t$names, levels = Th8_t$names)
+names(Th8_t) <- c("Th8_Applied","Th8_Activated", "Th8_Perc", "names")
+
+
+Th9_t <- as.data.frame(t(Th9))
+Th9_t$names <- rownames(Th9_t)
+Th9_t <- Th9_t[order(Th9_t$Activated, decreasing=TRUE),]
+Th9_t$names <- factor(Th9_t$names, levels = Th9_t$names)
+names(Th9_t) <- c("Th9_Applied","Th9_Activated", "Th9_Perc", "names")
+
+```
+
+
+```{r}
+#Merge them all together
+
+list_df = list(Th1_t, Th2_t, Th3_t, Th4_t, Th5_t, Th6_t, Th7_t, Th8_t, Th9_t)
+Total_counts <- list_df %>% reduce(full_join, by='names')
+
+Total_counts <- Total_counts %>%
+  select(names, everything())
+
+Total_counts <- Total_counts[order(Total_counts$names),]
+
+Total_counts$names <- as.character(Total_counts$names)
+```
+
+```{r}
+rm(list=(ls()[ls()!="Total_counts"]))
+```
+
+```{r}
+write.csv(Total_counts, "M:/Documents/Hariri_review/Data_Vis/CombinedThresholds_CONTROLS_NEW.csv", row.names=TRUE)
+```
+
+#Synthesising similar regions
+```{r}
+##SUBCORTICAL:
+Amygdala <- as.data.frame(dplyr::filter(Total_counts, grepl('amygdala', names)))
+  #AAL 41+42
+Thalamus <- as.data.frame(dplyr::filter(Total_counts, (grepl('thalamus', names) & !grepl('hypo', names)) | grepl('geniculate', names)))
+  #AAL 77 + 78
+Hypothalamus <- as.data.frame(dplyr::filter(Total_counts, grepl('thalamus', names) & grepl('hypo', names)))
+  #AAL NA
+Hippocampus <- as.data.frame(dplyr::filter(Total_counts, grepl('hippocamp', names) & !grepl('para', names)))
+  #AAL 37 +38
+Parahippocampus <- as.data.frame(dplyr::filter(Total_counts, grepl('hippocamp', names) & grepl('para', names)))
+  #AAL 39 + 40
+Basal_Ganglia <- as.data.frame(dplyr::filter(Total_counts, grepl('basal ganglia', names) | grepl('lentiform', names)| grepl('pallidus', names ) | grepl('putamen', names) | grepl('accumbens', names) | grepl('substantia', names) | grepl('caudate', names) | grepl('pallidum', names)))
+  #AAL 73+79  75+76 71 + 72 (Putamen, pallidum, caudate, lentiform gyrus, nucleus accumbens)
+
+
+
+#Cerebellum/Brain stem
+Cerebellum <- as.data.frame(dplyr::filter(Total_counts, grepl('cerebel', names) | grepl('vermis', names) | grepl('declive', names)))
+  #AAL 91-116
+Brain_stem <- as.data.frame(dplyr::filter(Total_counts, grepl('stem', names) | grepl('pons', names) | grepl('midbrain', names)))
+  #AAL NA
+
+
+#OCCIPITAL:
+Occipital_V1 <- as.data.frame(dplyr::filter(Total_counts, (grepl('occipital', names) & (grepl('pole', names)) | (grepl('visual', names)& !grepl('extra',names))| grepl('calcarine', names)) | (grepl('striate', names) & !grepl('extra',names)))) 
+Occipital_V1 <- rbind(Occipital_V1,  subset(Total_counts, names =="occipital lobe" | names == "l occipital"| names == "r occipital"| names == "l occipital cortex"| names == "r occipital cortex"| names == "l occipital lobe"| names == "r occipital lobe" | names == "r occipital gyrus"| names == "l occipital gyrus") )
+
+  #AAL 43 + 44
+Occipital_Secondary <- as.data.frame(dplyr::filter(Total_counts, (grepl('occipital', names) & grepl('superior', names)) | (grepl('occipital', names) & (grepl('medial', names) | grepl('middle', names) | grepl('lateral', names))) | (grepl('occipital', names) & (grepl('inferior', names) | grepl('face', names)))| grepl('extra', names)))
+#AAL 49 + 50 #AAL 51 + 52   #AAL 53 + 54 
+Occipital_Secondary <- rbind(Occipital_Secondary,  subset(Total_counts, names =="occipital lobe" | names == "l occipital"| names == "r occipital"| names == "l occipital cortex"| names == "r occipital cortex"| names == "l occipital lobe"| names == "r occipital lobe") )
+
+Occipital_Cuneus <- as.data.frame(dplyr::filter(Total_counts, grepl('cune', names) & !grepl('pre',names)))
+  #AAL 51 + 52
+Lingual <- as.data.frame(dplyr::filter(Total_counts, grepl('lingual', names)))
+  #AAL 47 + 48
+
+#Occipital_TOTAL <- as.data.frame(dplyr::filter(Total_counts, (grepl('occipital', names) | grepl('visual', names) | ((grepl('cune', names)) & !grepl('pre', names)) | grepl('striate', names))))
+
+
+#TEMPORAL: ##CHECKED 31/5
+Temporal_Superior <- as.data.frame(dplyr::filter(Total_counts, grepl('temporal', names) & grepl('superior', names) & !grepl('pole',names)))
+  #AAL 81 + 82
+  Temporal_Superior <- rbind(Temporal_Superior, subset(Total_counts, names == "r temporal lobe" | names == "l temporal lobe" |  names == "r temporal gyrus"))
+  #Add unspecific terms
+Temporal_Pole <- as.data.frame(dplyr::filter(Total_counts, grepl('temporal', names) & grepl('pole',names)))
+  #AAL 83 + 84
+Temporal_Middle <- as.data.frame(dplyr::filter(Total_counts, (grepl('temporal', names) & (grepl('medial', names) | grepl('middle', names)) | grepl('entorhinal', names) )))
+  #AAL 85 + 86  + Entorhinal
+  Temporal_Middle <- rbind(Temporal_Middle, subset(Total_counts, names == "r temporal lobe" | names == "l temporal lobe" |  names == "r temporal gyrus"))
+Temporal_Inferior <- as.data.frame(dplyr::filter(Total_counts, grepl('temporal', names) & grepl('inferior', names)))
+  #AAL 89 + 90
+  Temporal_Inferior <- rbind(Temporal_Inferior, subset(Total_counts, names == "r temporal lobe" | names == "l temporal lobe" |  names == "r temporal gyrus"))
+#Temporal_TOTAL <- as.data.frame(dplyr::filter(Total_counts, grepl('temporal', names)))
+Fusiform <-  as.data.frame(dplyr::filter(Total_counts, grepl('fusiform', names)))
+  #AAL 55 + 56
+
+
+#PARIETAL:
+Parietal_Superior <- as.data.frame(dplyr::filter(Total_counts, grepl('parietal', names) & grepl('superior', names)))
+  #AAL 59 + 60
+Parietal_Inferior <- as.data.frame(dplyr::filter(Total_counts, grepl('parietal', names) & grepl('inferior', names)| grepl('angular ', names)))
+  #AAL 65 + 66 (Angular Gyrus) + 61 + 62 (Inf. Parietal Gyrus)
+Parietal_Precuneus <- as.data.frame(dplyr::filter(Total_counts, grepl('cune', names) & grepl('pre',names)))
+  #AAL 67 + 68
+
+#INSULA
+Insula <- as.data.frame(dplyr::filter(Total_counts, grepl('insula', names)))
+  #AAL 29 + 30
+Claustrum <- as.data.frame(dplyr::filter(Total_counts, grepl('claustrum', names)))
+  #AAL NA
+
+
+#FRONTAL:
+Frontal_dlPFC <-  as.data.frame(dplyr::filter(Total_counts, (grepl('frontal', names) & grepl('superior', names) & !grepl('orbi', names) & !grepl('medi', names)) | (grepl('frontal', names) & (grepl('middle', names) & !grepl('orbi', names)) & !grepl('vent', names) | grepl('dorsolateral', names) | grepl('eye',names))))
+  #AAL 3 + 4  7 + 8 (frontal eye fields, dorsolateral prefrontal cortex, medial frontal gyrus)
+Frontal_dlPFC <- rbind(Frontal_dlPFC, subset(Total_counts, names == "l anterior prefrontal cortex" | names == "r anterior prefrontal cortex" | names == "l frontal cortex" |  names == "r frontal cortex" |  names == "l prefrontal cortex" | names == "r prefrontal cortex"))
+  #Add unspecific terms
+
+Frontal_vlPFC <- as.data.frame(dplyr::filter(Total_counts, grepl('frontal', names) & ((grepl('inferior', names) & !grepl('orbito', names) | grepl('ventrolateral', names)))))
+  #AAL 11-16 (ventrolateral prefrontal cortex, inferior frontal gyrus)
+Frontal_vlPFC <- rbind(Frontal_vlPFC, subset(Total_counts, names == "l anterior prefrontal cortex" | names == "r anterior prefrontal cortex" | names == "l frontal cortex" |  names == "r frontal cortex" |  names == "l prefrontal cortex" | names == "r prefrontal cortex"))
+
+Frontal_dmPFC <- as.data.frame(dplyr::filter(Total_counts, (grepl('frontal', names) & ((grepl('superior', names) & !grepl('orbi', names) & grepl('medial', names))|(grepl('dors', names) & !grepl('lateral', names))) | (grepl('supplementary', names) & grepl('pre', names)))|grepl('premotor', names) | grepl('precentral', names)))
+  #AAL 23 + 24 (frontal superior medial, presupplementary motor area,   #AAL 19 + 20 - supplementary motor area, precentral gyrus, premotor cortex)
+Frontal_dmPFC <- rbind(Frontal_dmPFC, subset(Total_counts, names == "l anterior prefrontal cortex" | names == "r anterior prefrontal cortex" | names == "l frontal cortex" |  names == "r frontal cortex" |  names == "l prefrontal cortex" | names == "r prefrontal cortex"| names == "l medial frontal cortex" | names == "r medial frontal cortex" |  names == "medial frontal cortex" | names == "r medial prefrontal cortex" | names == "l medial prefrontal cortex" ))
+
+Frontal_vmPFC <- as.data.frame(dplyr::filter(Total_counts, (grepl('frontal', names) & ((grepl('vent', names) & grepl('medi', names)) | grepl('pole', names)) | grepl('rectal', names)) | (grepl('cingul', names) & grepl("genu", names)) | grepl('subcallosal', names)))
+  #AAL ventromedial pfc and subgenual cingulate
+Frontal_vmPFC <- rbind(Frontal_vmPFC, subset(Total_counts, names == "l anterior prefrontal cortex" | names == "r anterior prefrontal cortex" | names == "l frontal cortex" |  names == "r frontal cortex" |  names == "l prefrontal cortex" | names == "r prefrontal cortex"| names == "l medial frontal cortex" | names == "r medial frontal cortex" |  names == "medial frontal cortex" | names == "r medial prefrontal cortex" | names == "l medial prefrontal cortex" ))
+#Subgenual_Cingulate <- as.data.frame(dplyr::filter(Total_counts, (grepl('cingul', names) & grepl("genu", names)) | grepl('subcallosal', names)))
+
+Cingulate<- as.data.frame(dplyr::filter(Total_counts, grepl('cingul', names) & !grepl("genu", names)))
+  #AAL 31 - 36 (All regions - acc, mcc, pcc)
+
+Orbito_Frontal_TOTAL <-  as.data.frame(dplyr::filter(Total_counts, grepl('orbito', names)))
+
+
+NOSIGDIF <- as.data.frame(dplyr::filter(Total_counts, grepl('nsd', names)))
+
+```
+
+```{r}
+REGIONS <- (setdiff(ls(), c("Total_counts", "REGIONS","r", "df","df2", "df2L", "df2R", "Regions_Activated", "Regions_Activated_L", "Regions_Activated_R", "UNUSED_names", "usednames")))
+
+#CHECKING_counts <- REGIONS %>% reduce(full_join, by='names')
+```
+
+
+```{r}
+#COMBINED LEFT AND RIGHT
+Regions_Activated <- data.frame()
+r = 1 #increasing row numbers
+usednames <- c()
+
+for (df in REGIONS){
+  #print(df)
+  #Get the DF
+    .val <- get(df)
+  df2 <- as.data.frame(.val)
+  #Add the colSum to the new DF
+  Regions_Activated[r,1] <- as.character(df)
+  Regions_Activated[r,2:28] <- colSums(df2[,2:28], na.rm = TRUE)
+  r= r+1
+  
+  usednames <- c(usednames, df2$names)
+}
+
+colnames(Regions_Activated) <- c("Region", "Th1_Searched", "Th1_Activated", "Th1_Perc", "Th2_Searched", "Th2_Activated", "Th2_Perc","Th3_Searched", "Th3_Activated", "Th3_Perc", "Th4_Searched", "Th4_Activated", "Th4_Perc", "Th5_Applied", "Th5_Activated", "Th5_Perc","Th6_Applied", "Th6_Activated", "Th6_Perc", "Th7_Applied","Th7_Activated", "Th7_Perc", "Th8_Applied","Th8_Activated", "Th8_Perc", "Th9_Applied","Th9_Activated", "Th9_Perc")
+
+```
+
+```{r}
+UNUSED_names <- setdiff(usednames, Total_counts$names)
+```
+
+
+
+```{r}
+#for (df in REGIONS){
+#  #print(df)
+#  #Get the DF
+#    .val <- get(df)
+#  df2 <- as.data.frame(.val)
+#  #Add the colSum to the new DF
+#  print(df2$names)
+#}
+```
+
+
+```{r}
+#SEPARATED LEFT AND RIGHT
+Regions_Activated_L <- data.frame()
+Regions_Activated_R <- data.frame()
+r = 1 #increasing row numbers
+usednames <- c()
+
+for (df in REGIONS){
+  #print(df)
+  #Get the DF
+  .val <- get(df)
+  df2 <- as.data.frame(.val)
+  #Split into left and right
+  df2L <- as.data.frame(dplyr::filter(df2, startsWith(names, 'l ')))
+  #Add colSum to new Left df
+    Regions_Activated_L[r,1] <- as.character(df)
+    Regions_Activated_L[r,2:28] <- colSums(df2L[,2:28], na.rm = TRUE)
+  df2R <- as.data.frame(dplyr::filter(df2, startsWith(names, 'r ')))
+  #Add colSum to new Right df
+    Regions_Activated_R[r,1] <- as.character(df)
+    Regions_Activated_R[r,2:28] <- colSums(df2R[,2:28], na.rm = TRUE)                     
+
+  r= r+1
+  usednames <- c(usednames, df2$names)
+  
+}
+
+colnames(Regions_Activated_L) <- c("Region", "Th1_Searched", "Th1_Activated", "Th1_Perc", "Th2_Searched", "Th2_Activated", "Th2_Perc","Th3_Searched", "Th3_Activated", "Th3_Perc", "Th4_Searched", "Th4_Activated", "Th4_Perc", "Th5_Applied", "Th5_Activated", "Th5_Perc","Th6_Applied", "Th6_Activated", "Th6_Perc", "Th7_Applied","Th7_Activated", "Th7_Perc", "Th8_Applied","Th8_Activated", "Th8_Perc", "Th9_Applied","Th9_Activated", "Th9_Perc")
+
+colnames(Regions_Activated_R) <- c("Region", "Th1_Searched", "Th1_Activated", "Th1_Perc", "Th2_Searched", "Th2_Activated", "Th2_Perc","Th3_Searched", "Th3_Activated", "Th3_Perc", "Th4_Searched", "Th4_Activated", "Th4_Perc", "Th5_Applied", "Th5_Activated", "Th5_Perc","Th6_Applied", "Th6_Activated", "Th6_Perc", "Th7_Applied","Th7_Activated", "Th7_Perc", "Th8_Applied","Th8_Activated", "Th8_Perc", "Th9_Applied","Th9_Activated", "Th9_Perc")
+
+```
+
+```{r}
+write.csv(Regions_Activated, "M:/Documents/Hariri_review/Data_Vis/Regions_activated_CONTROLS_NEW.csv", row.names=TRUE)
+write.csv(Regions_Activated_L, "M:/Documents/Hariri_review/Data_Vis/Regions_activated_L_CONTROLS.csv", row.names=TRUE)
+write.csv(Regions_Activated_R, "M:/Documents/Hariri_review/Data_Vis/Regions_activated_R_CONTROLS.csv", row.names=TRUE)
+
+
+
+rm(df2, df2L, df2R, r, df)
+```
+

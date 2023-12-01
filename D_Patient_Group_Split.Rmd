@@ -1,0 +1,94 @@
+---
+title: "Patient_splits"
+author: "HannahSavage"
+date: "2023-08-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Set env
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+#library('qgraph')
+library('data.table')
+library('reshape2')
+library('ade4')
+library('viridis')
+library(extrafont)
+library(ggalluvial)
+ 
+```
+
+
+
+```{r}
+##SET DIAGNOSIS: 
+#Diagnosis <- 'ADHD'
+#Diagnosis <- 'ARD'
+#Diagnosis <- 'ASD'
+#Diagnosis <- 'BP'
+#Diagnosis <- 'BDD' ##NO STUDIES
+#Diagnosis <- 'BPD'
+#Diagnosis <- 'GD'
+#Diagnosis <- 'MDD'
+Diagnosis <- 'OCD'
+#Diagnosis <- 'Schizophrenia'
+#Diagnosis <- 'SUD' 
+```
+
+```{r}
+#Select the columns that will be used
+Patient_Group_Data <- read_excel("M:/Documents/Hariri_review/USE_ME/Data_extraction_CLEANING.xlsx", na=c(""," ","NA"))
+#Patient_Group_Data_LONG <- gather(Patient_Group_Data, Diagnosis, Present, c(6:16,18:28, 30:40) , factor_key=TRUE)
+#Patient_Group_Data <- filter(Patient_Group_Data_LONG, Present==1)
+```
+```{r}
+if (Diagnosis == 'ADHD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_ADHD == 1 | PG2_ADHD == 1 |  PG3_ADHD == 1)
+} else if (Diagnosis == 'ARD') {
+ Patient_Group_Data <- subset(Patient_Group_Data, PG1_ARD == 1 | PG2_ARD == 1 |  PG3_ARD == 1)
+} else if (Diagnosis == 'ASD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_ASD == 1 | PG2_ASD == 1 |  PG3_ASD == 1)
+} else if (Diagnosis == 'BDD') {
+Patient_Group_Data <- subset(Patient_Group_Data, PG1_BDD == 1 | PG2_BDD == 1 |  PG3_BDD == 1)
+} else if (Diagnosis == 'BP') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_BP == 1 | PG2_BP == 1 |  PG3_BP == 1)
+} else if (Diagnosis == 'BPD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_BPD == 1 | PG2_BPD == 1 |  PG3_BPD == 1)
+} else if (Diagnosis == 'GD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_GD == 1 | PG2_GD == 1 |  PG3_GD == 1)
+} else if (Diagnosis == 'MDD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_MDD == 1 | PG2_MDD == 1 |  PG3_MDD == 1)
+} else if (Diagnosis == 'OCD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_OCD == 1 | PG2_OCD == 1 |  PG3_OCD == 1)
+} else if (Diagnosis == 'Schizophrenia') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_Schizophrenia == 1 | PG2_Schizophrenia == 1 |  PG3_Schizophrenia == 1)
+} else if (Diagnosis == 'SUD') {
+  Patient_Group_Data <- subset(Patient_Group_Data, PG1_SUD == 1 | PG2_SUD == 1 |  PG3_SUD == 1)
+}
+
+Patient_Group_Data <- Patient_Group_Data %>% drop_na(c("Patients_>_Controls:_Faces_>_Control"))
+
+Patient_sub_group <- select(Patient_Group_Data,c('Article_Num',
+                                            'Publication_Year',
+                                            colnames(Patient_Group_Data)[grep("Age",colnames(Patient_Group_Data))],
+                                            colnames(Patient_Group_Data)[grep("Sex",colnames(Patient_Group_Data))],
+                                            colnames(Patient_Group_Data)[grep("Sample",colnames(Patient_Group_Data))],
+                                            colnames(Patient_Group_Data)[grep("PG",colnames(Patient_Group_Data))]))
+
+write.csv(Patient_sub_group, paste0('M:/Documents/Hariri_review/USE_ME/Patient_splits/', Diagnosis,'.csv'))
+```
+

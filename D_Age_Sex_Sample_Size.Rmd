@@ -1,0 +1,548 @@
+---
+title: "Age_Sex_Sample_Size"
+author: "HannahSavage"
+date: "2022-11-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## SET ENV
+```{r, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+library(extrafont)
+```
+
+```{r Define_Themes}
+##DEFINE THEMES:
+#Demographics plot
+theme_demographics <- theme_bw() +
+  theme(
+    aspect.ratio = 2/6,
+    panel.grid = element_blank(), #no grid
+    panel.border = element_blank(), #no border around the entire plot
+    axis.line.x.bottom = element_line(color = 'black'), #bottom border
+    axis.line.y.left   = element_line(color = 'black'), #left border
+    axis.line.y.right  = element_blank(), #no right border
+    axis.text.y.right  = element_blank(),
+    legend.title = element_blank(),
+    plot.title = element_text(),
+    plot.margin = unit(c(1,1,2,1), "lines"),
+    text=element_text(size=20, 
+        family="Calibri Light"),
+    legend.position = "none")
+
+
+```
+
+#Import the Data Extraction table:
+```{r}
+Extracted_data <- read_xlsx("M:/Documents/Hariri_review/USE_ME/Data_extraction_CLEANING.xlsx", na=c(""," ", "NA"))
+
+#View(Extracted_data)
+
+Extracted_data <- Extracted_data[order(Extracted_data$Publication_Year),]
+```
+
+
+
+
+```{r}
+#Make the value of Pulication_Year slightly different (2000 -> 2000.06 --> 0.06/paper as max 15 in one year) so that they dodge on the X (becoming Y) axis on the bubble plot
+
+f = NULL;
+
+for (y in unique(Extracted_data$Publication_Year))
+{
+  n = nrow((Extracted_data[Extracted_data$Publication_Year == y, ]))
+  if (n > 1){
+    for (idx in 1:n)
+      {
+        tempdf = (Extracted_data[Extracted_data$Publication_Year == y, ])
+        #print(tempdf) 
+        pubyear_unique = tempdf [idx, "Publication_Year"] + ((idx-1) * 0.06)
+        f <- rbind(f, pubyear_unique)
+          }
+    rm(idx)
+    rm(n)
+    } 
+  else {
+    tempdf = (Extracted_data[Extracted_data$Publication_Year == y, ])
+    pubyear_unique <- tempdf [1, "Publication_Year"]
+    f <- rbind(f, pubyear_unique)
+  }
+  
+  rm(pubyear_unique, tempdf)
+}
+```
+
+
+```{r}
+Extracted_data['Publication_Year'] <- f
+rm(f)
+```
+
+```{r}
+#Recode the diagnostic labels into single code for filling later: 
+DiagnosisCols <- c("54:64", "168:178", "200:210")
+diagnosis_mapping <- c("ADHD", "ASD", "ARD", "OCD", "MDD", "BP", "Schizophrenia", "BPD", "GD", "SUD")
+diagnosis_number <- c(1, 1, 2, 2, 3, 3, 4, 5, 5, 5)
+
+for (k in 1:3){
+  for (i in 1:nrow(Extracted_data)) {
+    if (k ==1){
+      col_values <- Extracted_data[i, 54:64]
+    } else if (k ==2){
+      col_values <- Extracted_data[i, 168:178]
+    } else if (k ==3){
+      col_values <- Extracted_data[i, 200:210]
+    }  
+    new_col_name <- paste0("PG",k,"1_Diagnosis_recode")
+    num_diagnoses <- sum(col_values, na.rm = TRUE)
+  
+      if (num_diagnoses == 0) {
+        Extracted_data[i, new_col_name] <- 0
+      } else if (num_diagnoses == 1) {
+         for (j in 1:length(diagnosis_mapping)) {
+           if (any(col_values[paste0("PG",k,"_", diagnosis_mapping[j])] == 1)) {
+            Extracted_data[i, new_col_name] <- diagnosis_number[j]
+            break
+           }
+          }
+      } else if (num_diagnoses > 1){
+        Extracted_data[i, new_col_name] <- 6
+      }
+  }
+}
+```
+
+
+##DEMOGRAPHICS: Bubble Plot: Year x Age x Sex
+```{r}
+#Extract the data required for the bubble plot:
+  #Article_Num
+  #Publication Year
+  #For each control group:
+    #Age_Mean
+    #Age_SD
+    #Sex_M
+    #Sex_F
+
+Bubble_plot_data <- select(Extracted_data,c('Article_Num',
+                                            'Publication_Year',
+                                            colnames(Extracted_data)[grep("Age",colnames(Extracted_data))],
+                                            colnames(Extracted_data)[grep("Sex",colnames(Extracted_data))],
+                                            colnames(Extracted_data)[grep("Sample",colnames(Extracted_data))]))
+
+Bubble_plot_data[Bubble_plot_data == "Patient group not of interest"] <- NA
+Bubble_plot_data[Bubble_plot_data == "Patient group not of interest-Williams–Beuren syndrome"] <- NA
+
+```
+
+
+```{r}
+#Split data frame into CONTROLS and PATIENTS:
+#Select Control columns
+Bubble_plot_data_CONTROLS  <- select(Bubble_plot_data, c('Article_Num',
+                                            'Publication_Year',
+                                            colnames(Bubble_plot_data)[grep("CG",colnames(Bubble_plot_data))]))
+#Convert characters to numeric
+New_data_frame_CONTROLS  <- mutate_if(Bubble_plot_data_CONTROLS, is.character, as.numeric, digits = 6)
+
+
+
+
+Bubble_plot_data_PATIENTS  <- select(Bubble_plot_data, c('Article_Num',
+                                            'Publication_Year',
+                                            colnames(Bubble_plot_data)[grep("PG",colnames(Bubble_plot_data))]))
+
+#Convert characters to numeric
+New_data_frame_PATIENTS  <- mutate_if(Bubble_plot_data_PATIENTS, is.character, as.numeric, digits = 6)
+#Add the diagnosis columns (doing this previously they get wiped by the character conversion)
+Bubble_plot_data_PATIENTS_diagnosis <- select(Extracted_data, c(colnames(Extracted_data)[grep("Diagnosis_", colnames(Extracted_data))]))
+
+New_data_frame_PATIENTS <- cbind(New_data_frame_PATIENTS, Bubble_plot_data_PATIENTS_diagnosis)
+
+```
+```{r}
+New_data_frame_CONTROLS$CG1_Fem_Perc <- (New_data_frame_CONTROLS$CG1_Sex_F/New_data_frame_CONTROLS$CG1_Sample_Size)*100
+New_data_frame_CONTROLS$CG2_Fem_Perc <- (New_data_frame_CONTROLS$CG2_Sex_F/New_data_frame_CONTROLS$CG2_Sample_Size)*100
+New_data_frame_CONTROLS$CG3_Fem_Perc <- (New_data_frame_CONTROLS$CG3_Sex_F/New_data_frame_CONTROLS$CG3_Sample_Size)*100
+```
+
+```{r}
+##CONTROLS##
+
+#Reformat the data from wide to long: collapsing over the Control Group variable
+Age_mean_cols <- colnames(New_data_frame_CONTROLS)[grep("Age_mean",colnames(New_data_frame_CONTROLS))]
+Age_SD_cols <- colnames(New_data_frame_CONTROLS)[grep("Age_SD",colnames(New_data_frame_CONTROLS))]
+Sex_M_cols <- colnames(New_data_frame_CONTROLS)[grep("Sex_M",colnames(New_data_frame_CONTROLS))]
+Sex_F_cols <- colnames(New_data_frame_CONTROLS)[grep("Sex_F",colnames(New_data_frame_CONTROLS))]
+Sample_Size <- colnames(New_data_frame_CONTROLS)[grep("Sample_Size",colnames(New_data_frame_CONTROLS))]
+Fem_perc <-  colnames(New_data_frame_CONTROLS)[grep("Fem_Perc",colnames(New_data_frame_CONTROLS))]
+
+New_data_frame_Age_Mean <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Age_mean_cols), 
+    names_to = "Control_group", 
+    names_prefix = "CG",
+    names_transform = list(Age_mean_cols = as.double),
+    values_to = "Age_Mean")
+New_data_frame_Age_Mean$Control_group <- parse_number(New_data_frame_Age_Mean$Control_group)
+
+New_data_frame_Age_SD <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Age_SD_cols), 
+    names_to = "Control_group", 
+    names_transform = list(Age_SD_cols = as.double),
+    values_to = "Age_SD")
+New_data_frame_Age_SD$Control_group <- parse_number(New_data_frame_Age_SD$Control_group)
+
+New_data_frame_Sex_M <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Sex_M_cols), 
+    names_to = "Control_group", 
+    names_transform = list(Sex_M_cols = as.double),
+    values_to = "Sex_M")  
+New_data_frame_Sex_M$Control_group <- parse_number(New_data_frame_Sex_M$Control_group)
+
+New_data_frame_Sex_F <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Sex_F_cols), 
+    names_to = "Control_group", 
+    names_transform = list(Sex_F_cols = as.double),
+    values_to = "Sex_F") 
+New_data_frame_Sex_F$Control_group <- parse_number(New_data_frame_Sex_F$Control_group)
+
+New_data_frame_Sample_Size <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Sample_Size), 
+    names_to = "Control_group", 
+    names_transform = list(Sample_Size = as.double),
+    values_to = "Sample_Size") 
+New_data_frame_Sample_Size$Control_group <- parse_number(New_data_frame_Sample_Size$Control_group)
+
+
+New_data_frame_Fem_Perc <- New_data_frame_CONTROLS %>% 
+  pivot_longer(
+    cols = all_of(Fem_perc), 
+    names_to = "Control_group", 
+    names_transform = list(Fem_perc = as.double),
+    values_to = "Fem_Perc") 
+New_data_frame_Fem_Perc$Control_group <- parse_number(New_data_frame_Fem_Perc$Control_group)
+
+```
+
+
+
+```{r}
+##CONTROLS##
+#Build new dataframe that contains: 
+  #Article_Num
+  #Publication Year
+  #Control_group
+  #Age_Mean
+  #Age_SD
+  #Sex_M
+  #Sex_F
+
+Long_df <- New_data_frame_Age_Mean[, c(1,2,21,22)]
+Long_df["Age_SD"] <- New_data_frame_Age_SD[,22]
+Long_df["Sex_M"] <- New_data_frame_Sex_M[,22]
+Long_df["Sex_F"] <- New_data_frame_Sex_F[,22]
+Long_df["Sample_Size"] <- New_data_frame_Sample_Size[,22]
+Long_df["Fem_perc"] <- New_data_frame_Fem_Perc[,22]
+Long_df_no_edits <- Long_df
+
+#Remove rows with no Sample Size reported
+Long_df <- Long_df[!is.na(Long_df$Sample_Size), ]
+
+#For Articles with missing mean, but reported sample size - substitute NA for '100'
+for (r in 1:length(Long_df$Age_Mean)){
+  if (is.na(Long_df$Age_Mean[r]))
+    { #print(is.na(Long_df$Age_Mean[r]))
+      Long_df$Age_Mean[r] <- 90
+    }
+  }
+
+```
+
+
+```{r}
+#Clean environment
+##CONTROLS##
+rm(New_data_frame_Age_Mean, New_data_frame_Age_SD, New_data_frame_Sex_M, New_data_frame_Sex_F, New_data_frame_Sample_Size, New_data_frame_Fem_Perc)
+```
+
+
+```{r}
+##CONTROLS##
+describeBy(Long_df)
+```
+
+```{r}
+##CONTROLS##
+#Get stats per control group
+#describeBy(Long_df, group = Long_df$Control_group)
+```
+
+
+```{r}
+#Split dataset by whether a study has 1, 2 or 3 papers. 
+One_CG <- filter(New_data_frame_CONTROLS, CG1_Sample_Size > 0 & is.na(CG2_Sample_Size) & is.na(CG3_Sample_Size))
+Two_CG <- filter(New_data_frame_CONTROLS, CG1_Sample_Size > 0 & CG2_Sample_Size >0 & is.na(CG3_Sample_Size))
+Three_CG <-filter(New_data_frame_CONTROLS, CG3_Sample_Size >0)
+```
+
+
+
+
+```{r}
+describeBy(One_CG)
+describeBy(Two_CG)
+describeBy(Three_CG)
+```
+
+#OG GOOD CODE
+```{r}
+q <- ggplot(Long_df)+
+  #general plot settings
+  scale_y_continuous(n.breaks=20, limits=c(1997, 2024))+
+  scale_x_continuous(breaks = seq(0, 80, by = 5), limits = c(0, 110), expand = c(0.01, 0.5))+
+  xlab("Mean Age of Control Group")+ 
+  ylab("Year of Publication")+
+  theme_demographics+
+ 
+  #Plot the mean age as a dot, colored by the Group number 
+  geom_point(aes(x=Age_Mean, y=Publication_Year, colour = as.factor(Control_group)), size = 3) +
+  scale_colour_manual(values = c("#000000", "#727272","#d2d2d2"), labels = c("Control Group 1", "Control Group 2", "Control Group 3"))+
+
+    #Plot the % of M/F per study, scaled by the sample size
+  geom_scatterpie(data = Long_df, aes(x=Age_Mean, y=Publication_Year, r=log(Sample_Size)/3), 
+                  color=NA,
+                  cols = c("Sex_M", "Sex_F"), 
+                  alpha = 0.2) + 
+  scale_fill_manual(values = c("#00bfff", "#ff6699"), labels = c("Males", "Females"))+  
+  #geom_scatterpie_legend((log(Long_df$Sample_Size)/3), x=100, y=2003, n = 3)+
+  annotate("text", x = 90, y = 1998, label = "Not Reported", size = 4, family = "Calibri Light")+
+  theme(legend.position = 'none')
+
+q
+
+
+#ggsave("M:/Documents/Hariri_review/Data_Vis/Figures/Age_Sex_SampleSize.png", dpi= 300, scale = 1, width = 30, height = 15, units = "cm" )
+
+
+```
+
+
+```{r}
+##PATIENTS##
+#Reformat the data from wide to long: collapsing over the Patient_group variable
+Age_mean_cols <- colnames(New_data_frame_PATIENTS)[grep("Age_mean",colnames(New_data_frame_PATIENTS))]
+Age_SD_cols <- colnames(New_data_frame_PATIENTS)[grep("Age_SD",colnames(New_data_frame_PATIENTS))]
+Sex_M_cols <- colnames(New_data_frame_PATIENTS)[grep("Sex_M",colnames(New_data_frame_PATIENTS))]
+Sex_F_cols <- colnames(New_data_frame_PATIENTS)[grep("Sex_F",colnames(New_data_frame_PATIENTS))]
+Sample_Size <- colnames(New_data_frame_PATIENTS)[grep("Sample_Size",colnames(New_data_frame_PATIENTS))]
+Diagnosis_stand_cols <- colnames(New_data_frame_PATIENTS)[grep("Diagnosis_stand",colnames(New_data_frame_PATIENTS))]
+Diagnosis_recode_cols <- colnames(New_data_frame_PATIENTS)[grep("Diagnosis_recode", colnames(New_data_frame_PATIENTS))]
+
+New_data_frame_Age_Mean <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Age_mean_cols), 
+    names_to = "Patient_group", 
+    names_prefix = "CG",
+    names_transform = list(Age_mean_cols = as.double),
+    values_to = "Age_Mean")
+New_data_frame_Age_Mean$Patient_group <- parse_number(New_data_frame_Age_Mean$Patient_group)
+
+New_data_frame_Age_SD <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Age_SD_cols), 
+    names_to = "Patient_group", 
+    names_transform = list(Age_SD_cols = as.double),
+    values_to = "Age_SD")
+New_data_frame_Age_SD$Patient_group <- parse_number(New_data_frame_Age_SD$Patient_group)
+
+New_data_frame_Sex_M <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Sex_M_cols), 
+    names_to = "Patient_group", 
+    names_transform = list(Sex_M_cols = as.double),
+    values_to = "Sex_M")  
+New_data_frame_Sex_M$Patient_group <- parse_number(New_data_frame_Sex_M$Patient_group)
+
+New_data_frame_Sex_F <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Sex_F_cols), 
+    names_to = "Patient_group", 
+    names_transform = list(Sex_F_cols = as.double),
+    values_to = "Sex_F") 
+New_data_frame_Sex_F$Patient_group <- parse_number(New_data_frame_Sex_F$Patient_group)
+
+New_data_frame_Sample_Size <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Sample_Size), 
+    names_to = "Patient_group", 
+    names_transform = list(Sample_Size = as.double),
+    values_to = "Sex_F") 
+New_data_frame_Sample_Size$Patient_group <- parse_number(New_data_frame_Sample_Size$Patient_group)
+
+New_data_frame_Diagnosis <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Diagnosis_stand_cols), 
+    names_to = "Patient_group",
+    names_transform = list(Diagnosis_stand_cols = as.character),
+    values_to = "Diagnosis")
+New_data_frame_Diagnosis$Patient_group <- parse_number(New_data_frame_Diagnosis$Patient_group)
+
+New_data_frame_Diagnosis_recode <- New_data_frame_PATIENTS %>% 
+  pivot_longer(
+    cols = all_of(Diagnosis_recode_cols), 
+    names_to = "Patient_group",
+    names_transform = list(New_data_frame_Diagnosis_recode = as.character),
+    values_to = "Diagnosis_recode")
+New_data_frame_Diagnosis_recode$Patient_group <- parse_number(New_data_frame_Diagnosis_recode$Patient_group)
+```
+
+```{r}
+##PATIENTS##
+#Build new dataframe that contains: 
+  #Article_Num
+  #Publication Year
+  #Control_group
+  #Age_Mean
+  #Age_SD
+  #Sex_M
+  #Sex_F
+  #Sample_Size
+  #Diagnosis
+
+Long_df_PATIENTS <- New_data_frame_Age_Mean[, c(1,2,27,28)]
+Long_df_PATIENTS["Age_SD"] <- New_data_frame_Age_SD[,28]
+Long_df_PATIENTS["Sex_M"] <- New_data_frame_Sex_M[,28]
+Long_df_PATIENTS["Sex_F"] <- New_data_frame_Sex_F[,28]
+Long_df_PATIENTS["Sample_Size"] <- New_data_frame_Sample_Size[,28]
+Long_df_PATIENTS["Diagnosis"] <- New_data_frame_Diagnosis[,28]
+Long_df_PATIENTS["Diagnosis"] <- as.factor(Long_df_PATIENTS$Diagnosis)
+Long_df_PATIENTS["Diagnosis_recode"] <- New_data_frame_Diagnosis_recode[,28]
+Long_df_PATIENTS["Diagnosis_recode"] <- as.factor(Long_df_PATIENTS$Diagnosis_recode)
+
+Long_df_PATIENTS <- Long_df_PATIENTS[!(Long_df_PATIENTS$Age_Mean == "" | is.na(Long_df_PATIENTS$Age_Mean)), ]
+Long_df_PATIENTS <- Long_df_PATIENTS[Long_df_PATIENTS$Diagnosis_recode != 0, ] #this removes study 41, 66, 95, 101, 125 that have a genetics group here
+
+```
+
+
+
+```{r}
+##PATIENTS##
+#Clean environment
+rm(New_data_frame_Age_Mean, New_data_frame_Age_SD, New_data_frame_Sex_M, New_data_frame_Sex_F, New_data_frame_Sample_Size, New_data_frame_Diagnosis)
+```
+
+
+```{r}
+Long_df_PATIENTS$Fem_Perc <- (Long_df_PATIENTS$Sex_F/Long_df_PATIENTS$Sample_Size)*100
+```
+
+
+```{r}
+##PATIENTS##
+describeBy(Long_df_PATIENTS)
+```
+
+```{r}
+New_data_frame_PATIENTS$PG1_Fem_Perc <- (New_data_frame_PATIENTS$PG1_Sex_F/New_data_frame_PATIENTS$PG1_Sample_Size)*100
+New_data_frame_PATIENTS$PG2_Fem_Perc <- (New_data_frame_PATIENTS$PG2_Sex_F/New_data_frame_PATIENTS$PG2_Sample_Size)*100
+New_data_frame_PATIENTS$PG3_Fem_Perc <- (New_data_frame_PATIENTS$PG3_Sex_F/New_data_frame_PATIENTS$PG3_Sample_Size)*100
+```
+
+```{r}
+#Split dataset by whether a study has 1, 2 or 3 patient groups 
+One_PG <- filter(New_data_frame_PATIENTS, PG1_Sample_Size > 0 & is.na(PG2_Sample_Size) & is.na(PG3_Sample_Size))
+Two_PG <- filter(New_data_frame_PATIENTS, PG1_Sample_Size > 0 & PG2_Sample_Size >0 & is.na(PG3_Sample_Size))
+Three_PG <-filter(New_data_frame_PATIENTS, PG3_Sample_Size >0)
+```
+
+
+```{r}
+describeBy(One_PG)
+describeBy(Two_PG)
+describeBy(Three_PG)
+```
+
+```{r}
+describeBy(Long_df_PATIENTS, group = Long_df_PATIENTS$Diagnosis_recode)
+```
+
+
+
+```{r}
+##PATIENTS##
+One_PG <- filter(New_data_frame_PATIENTS, PG1_Sample_Size > 0 & is.na(PG2_Sample_Size) & is.na(PG3_Sample_Size))
+Two_PG <- filter(New_data_frame_PATIENTS, PG1_Sample_Size > 0 & PG2_Sample_Size >0 & is.na(PG3_Sample_Size))
+Three_PG <-filter(New_data_frame_PATIENTS, PG3_Sample_Size >0)
+
+describeBy(Long_df_PATIENTS$Sample_Size, group = Long_df_PATIENTS$Diagnosis_recode)
+```
+```{r}
+
+Diagnosis_colours = c("#4cd964", "#8800c7", "#ec008c", "#00bfff", "#ff9966",  "darkgrey")
+
+#1 = Neurodivergence: "ADHD", "ASD"
+#2 = Anxiety Related: "ARD", "OCD"
+#3 = Mood disorder: "MDD", "BP"
+#4 = "Schizophrenia"
+#5 = Other: "BPD", "GD", "SUD" #ignore BDD not of interest
+
+q <- ggplot(Long_df_PATIENTS)+
+  #general plot settings
+  scale_y_continuous(n.breaks=20, limits=c(1997, 2024))+
+  scale_x_continuous(breaks = seq(0, 80, by = 5), limits = c(0, 110), expand = c(0.01, 0.5))+
+  xlab("Mean Age of Patient Group")+ 
+  ylab("Year of Publication")+
+  theme_demographics+
+ 
+    #Plot the % of M/F per study, scaled by the sample size
+  geom_scatterpie(aes(x=Age_Mean, y=Publication_Year, r=log(Sample_Size)/3), 
+                  data=Long_df_PATIENTS,
+                  color=NA,
+                  cols = c("Sex_M", "Sex_F"), 
+                  alpha = 0.2) + 
+  scale_fill_manual(values = c("#00bfff", "#ff6699"), labels = c("Males", "Females"))+
+  
+  #geom_scatterpie_legend((log(Long_df_PATIENTS$Sample_Size)/3), x=90, y=2003, n = 2)+
+
+  #Plot the mean age as a dot, colored by the Group number 
+  geom_point(aes(x=Age_Mean, y=Publication_Year, colour = as.factor(Diagnosis_recode)), size= 3) +
+  scale_colour_manual(values = Diagnosis_colours)+
+  annotate("text", x = 90, y = 1998, label = "Not Reported", size = 4, family = "Calibri Light")#+
+  #theme(legend.position = "right")
+  
+#Toggle the legend on or off 
+  #+theme(legend.position = "none")
+
+
+q
+
+
+#ggsave("M:/Documents/Hariri_review/USE_ME/Demographics/Patients_Age_Sex_SampleSize.png", dpi= 300, scale = 1, width = 15, height = 15, units = "cm" )
+
+```
+
+
+
+

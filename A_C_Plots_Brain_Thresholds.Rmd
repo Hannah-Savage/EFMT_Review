@@ -1,0 +1,184 @@
+---
+title: "Plots_Brain_Thresholds"
+author: "HannahSavage"
+date: "2023-05-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Set env
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+#library('qgraph')
+library('data.table')
+library('reshape2')
+library('ade4')
+library('viridis')
+library(extrafont)
+library(ggalluvial)
+ 
+```
+
+#Define themes
+```{r}
+##DEFINE THEMES:
+#Demographics plot
+theme_demographics <- theme_bw() +
+  theme(
+    aspect.ratio = 1/1,
+    panel.grid = element_blank(), #no grid
+    panel.border = element_blank(), #no border around the entire plot
+    axis.line.x.bottom = element_line(color = 'black'), #bottom border
+    axis.line.y.left   = element_line(color = 'black'), #left border
+    axis.line.y.right  = element_blank(), #no right border
+    axis.text.y.right  = element_blank(),
+    axis.text.x.bottom = element_blank(),
+    #legend.title = element_blank(),
+    #legend.position = c(0.9,0.6),
+    plot.title = element_text(),
+    panel.background = element_rect(fill='transparent', color=NA), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    theme.background = element_rect(fill=NA)
+  )
+
+```
+
+```{r}
+Regions_Activated <- read_csv("M:/Documents/Hariri_review/USE_ME/Activations/Controls/Spreadsheets/Regions_activated_CONTROLS_NEW.csv", show_col_types = FALSE)
+Regions_Activated <- Regions_Activated[-c(1)]
+```
+
+```{r}
+cols_to_plot_searched <- c("Th1_Searched", "Th2_Searched", "Th3_Searched", "Th4_Searched")
+cols_to_plot_activated <- c("Th1_Activated","Th2_Activated", "Th3_Activated", "Th4_Activated","Th5_Activated","Th6_Activated", "Th7_Activated", "Th8_Activated", "Th9_Activated")
+cols_to_plot_applied <-  c("Th5_Applied","Th6_Applied", "Th7_Applied", "Th8_Applied", "Th9_Applied")
+
+
+
+MaxVals <- as.data.frame(subset(Regions_Activated[-c(1)] %>% select(all_of(cols_to_plot_activated))))
+MaxVals$MAX <- apply(MaxVals, 1, max, na.rm=TRUE)
+```
+
+#For plotting only 6 thresholds
+```{r}
+cols_to_plot_searched <- c("Th1_Searched", "Th2_Searched", "Th3_Searched")
+cols_to_plot_activated <- c("Th1_Activated","Th2_Activated", "Th3_Activated","Th5_Activated","Th6_Activated", "Th7_Activated")
+cols_to_plot_applied <-  c("Th5_Applied","Th6_Applied", "Th7_Applied")
+
+
+
+MaxVals <- as.data.frame(subset(Regions_Activated[-c(1)] %>% select(all_of(cols_to_plot_activated))))
+MaxVals$MAX <- apply(MaxVals, 1, max, na.rm=TRUE)
+```
+
+
+
+```{r}
+REGIONS <- (setdiff(ls(), c("Total_counts", "REGIONS", "Regions_Activated", "Regions_Activated_L", "Regions_Activated_R", "df", "df_A", "df_S", "cols_to_plot_searched", "cols_to_plot_activated", "r", "MaxVals", "ROIfill")))
+REGIONS <- Regions_Activated$Region
+Regions_Activated$Th5_Applied <- 26
+Regions_Activated$Th6_Applied <- 8
+Regions_Activated$Th7_Applied <- 41
+Regions_Activated$Th8_Applied <- 18
+#Regions_Activated$Th9_Applied <- 5
+
+#cols_to_plot_searched <- c("Th1_Searched", "Th2_Searched", "Th3_Searched", "Th4_Searched")
+#cols_to_plot_activated <- c("Th1_Activated","Th2_Activated", "Th3_Activated", "Th4_Activated","Th5_Activated","Th6_Activated", "Th7_Activated", "Th8_Activated", "Th9_Activated")
+#cols_to_plot_applied <-  c("Th5_Applied","Th6_Applied", "Th7_Applied", "Th8_Applied", "Th9_Applied")
+
+REGIONS = c("Amygdala", "Hippocampus", "Cingulate", "Temporal_Superior","Parietal_Superior","Occipital_V1")
+            
+            
+for (r in REGIONS){
+#Subcortical - clockwise
+  if (r == "Amygdala"){ROIfill <- c("#ac0066", "#E6B2D1", "white")}
+  if (r == "Thalamus"){ROIfill <- c("#ec008c", "#f982dc", "white")}
+  if (r == "Hypothalamus"){ROIfill <- c("#ff6699", "#FFD1E0", "white")}
+  if (r == "Basal_Ganglia"){ROIfill <- c("#ff9fbf", "#FFE2EC", "white")}
+  if (r == "Parahippocampus"){ROIfill <- c("#fd8c94", "#FEDCDE", "white")}
+  if (r == "Hippocampus"){ROIfill <- c("#ff9966", "#FFE0D1", "white")}
+  
+#Parietal-Cerebellum/Brainstem - clockwise
+  if (r == "Parietal_Superior"){ROIfill <- c("#122da6", "#B7C0E4", "white")}
+  if (r == "Parietal_Inferior"){ROIfill <- c("#1100ff", "#B7B2FF", "white")}
+  if (r == "Cerebellum"){ROIfill <- c("#1ebbd7", "#BBEAF3", "white")}
+  if (r == "Brain_stem"){ROIfill <- c("#40e8ec", "#C5F8F9", "white")}
+  if (r == "Parietal_Precuneus"){ROIfill <- c("#00bfff", "#B2ECFF", "white")}
+
+#Temporal - clockwise
+  if (r == "Temporal_Superior"){ROIfill <- c("#008154", "#B2D9CB", "white")}
+  if (r == "Temporal_Inferior"){ROIfill <- c("#48bf91", "#C8ECDE", "white")}
+  if (r == "Fusiform"){ROIfill <- c("#56e78e", "#CCF8DD", "white")}
+  if (r == "Insula"){ROIfill <- c("#8affa0", "#DCFFE2", "white")}
+  if (r == "Temporal_Pole"){ROIfill <- c("#97d5bf", "#E0F2EC", "white")}
+  if (r == "Temporal_Middle"){ROIfill <- c("#58b6a6", "#CDE9E4", "white")}
+
+#Frontal - clockwise
+  if (r == "Cingulate"){ROIfill <- c("#5a0082", "#CDB2D9", "white")}
+  if (r == "Frontal_dmPFC"){ROIfill <- c("#8800c7", "#DBB2EE", "white")}
+  if (r == "Frontal_vmPFC"){ROIfill <- c("#c469fc", "#EDD2FE", "white")}
+  if (r == "Orbito_Frontal_TOTAL"){ROIfill <- c("#c345d5", "#EEC7F2", "white")}
+  if (r == "Frontal_vlPFC"){ROIfill <- c("#da85e3", "#F4DAF7", "white")}
+  if (r == "Frontal_dlPFC"){ROIfill <- c("#d1b2e0", "#F1E8F6", "white")}
+
+#Occipital - clockwise
+  if (r == "Occipital_V1"){ROIfill <- c("#c31738", "#EDB9C3", "white")}
+  if (r == "Occipital_Secondary"){ROIfill <- c("#db5734", "#F4CCC2", "white")}
+  if (r == "Lingual"){ROIfill <- c("#eb8838", "#F9DBC3", "white")}
+  if (r == "Occipital_Cuneus"){ROIfill <- c("#f4b74a", "#FCE9C8", "white")}
+
+
+ 
+  
+  
+  #else {ROIfill <- c( "#ac0066", "#F2D6E6", "white")}
+  df_A <- as.data.frame(t(as.data.frame(subset(Regions_Activated, Region == r) %>% select(all_of(cols_to_plot_activated)))))
+  df_S <- as.data.frame(t(as.data.frame(subset(Regions_Activated, Region == r) %>% select(all_of(cols_to_plot_searched)))))
+  df_WB <- as.data.frame(t(as.data.frame(subset(Regions_Activated, Region == r) %>% select(all_of(cols_to_plot_applied)))))
+  
+  showtext::showtext_opts(dpi = 200)
+  
+  PLOT <- ggplot() + 
+      geom_bar(df_S, mapping = aes(x = factor(1:nrow(df_S)), y = df_S[,1], fill = ROIfill[2]), stat = "identity", width = 0.75)+
+      geom_bar(df_WB, mapping = aes(x = factor((1:nrow(df_WB)+3)), y = df_WB[,1], fill = ROIfill[3]), colour = ROIfill[2],  linewidth = 1.5, stat = "identity", width=0.75)+
+      geom_bar(df_A, mapping = aes(x = factor(1:nrow(df_A)), y = df_A[,1], fill = ROIfill[1]), stat = "identity", width=0.5)+
+      labs(x = "", y = "Number of reports", family = "Calibri Light" )+
+      #scale_x_discrete(labels=c( "R\n\n1", "R\n\n2", "R\n\n3", "W\n\n1",  "W\n\n2", "W\n\n3"))+ #rownames(df_A)
+      ylim(0,85)+
+      scale_fill_manual(values=ROIfill)+
+      #ggtitle(r) +
+      theme(panel.grid = element_blank(), #no grid
+            panel.border = element_blank(), #no border around the entire plot
+            axis.line.x.bottom = element_line(color = 'black'), #bottom border
+            axis.line.y.left   = element_line(color = 'black'), #left border
+            axis.line.y.right  = element_blank(), #no right border
+            #legend.title = element_blank(),
+            legend.position = "none",
+            panel.background = element_rect(fill = "white"),
+            aspect.ratio = 1/1,
+            #axis.text.x = element_text(angle = 0),
+            text=element_text(size=33, 
+            family="Calibri Light"))
+  ggsave(plot = PLOT, width = 6, height = 6, bg = "transparent", units = "in", filename = paste("M:/Documents/Hariri_review/USE_ME/Activations/Controls/Plots/", r, "_new_X_LARGEFONT.png"), device = cairo_ps())
+    
+  
+print(PLOT)
+
+dev.off()
+}
+
+```
+

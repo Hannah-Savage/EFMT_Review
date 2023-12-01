@@ -1,0 +1,551 @@
+---
+title: "Plots_Brain_Thresholds"
+author: "HannahSavage"
+date: "2023-05-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Set env
+```{r, include = FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(grid)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+#library('qgraph')
+library('data.table')
+library('reshape2')
+library('ade4')
+library('viridis')
+library(extrafont)
+library(ggalluvial)
+ 
+```
+
+#Define themes
+```{r} 
+##DEFINE THEMES:
+#Demographics plot
+theme_demographics <- theme_bw() +
+  theme(
+    aspect.ratio = 1/1,
+    panel.grid = element_blank(), #no grid
+    panel.border = element_blank(), #no border around the entire plot
+    axis.line.x.bottom = element_line(color = 'black'), #bottom border
+    axis.line.y.left   = element_line(color = 'black'), #left border
+    axis.line.y.right  = element_blank(), #no right border
+    axis.text.y.right  = element_blank(),
+    #legend.title = element_blank(),
+    #legend.position = c(0.9,0.6),
+    plot.title = element_text(),
+    #panel.background = element_rect(color='black'), #transparent panel bg
+    #plot.background = element_rect(color='black'), #transparent plot bg
+    #theme.background = element_rect(fill='black')
+  )
+```
+
+#DEFINE GET ROIFILL FUNCTION#
+```{r}
+getROIfill <- function(region, column) {
+  colors <- character(length(region))
+    for (i in seq_along(region)) {
+      if (region[i] == "Amygdala") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#ac0066"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#E6B2D1"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Thalamus") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#ec008c"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#F9B2DC"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Hypothalamus") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#ff6699"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#FFD1E0"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Basal_Ganglia") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#ff9fbf"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#FFE2EC"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Parahippocampus") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#fd8c94"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#FEDCDE"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Hippocampus") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#ff9966"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#FFE0D1"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      }
+      
+    # Parietal-Cerebellum/Brainstem - clockwise
+      else if (region[i] == "Parietal_Superior") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#122da6"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#B7C0E4"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Parietal_Inferior") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#1100ff"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#B7B2FF"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Cerebellum") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#1ebbd7"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#BBEAF3"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Brain_stem") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#40e8ec"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#C5F8F9"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Parietal_Precuneus") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#00bfff"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#B2ECFF"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      }
+      
+      
+      # Temporal - clockwise
+      else if (region[i] == "Temporal_Superior") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#008154"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#B2D9CB"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Temporal_Inferior") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#48bf91"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#C8ECDE"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Fusiform") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#56e78e"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#CCF8DD"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Insula") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#8affa0"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#DCFFE2"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Temporal_Pole") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#97d5bf"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#E0F2EC"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Temporal_Middle") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#58b6a6"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#CDE9E4"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      }
+    
+      # Frontal - clockwise
+      else if (region[i] == "Cingulate") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#5a0082"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#CDB2D9"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Frontal_dmPFC") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#8800c7"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#DBB2EE"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Frontal_vmPFC") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#c469fc"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#EDD2FE"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Orbito_Frontal_TOTAL") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#c345d5"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#EEC7F2"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Frontal_vlPFC") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#da85e3"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#F4DAF7"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      } else if (region[i] == "Frontal_dlPFC") {
+        if (grepl("activated", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#d1b2e0"
+        } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+          colors[i] <- "#F1E8F6"
+        } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+          colors[i] <- "white"
+        }
+      }
+
+      # Occipital - clockwise
+      else if (region[i] == "Occipital_V1") {
+      if (grepl("activated", column[i], ignore.case = TRUE)) {
+        colors[i] <- "#c31738"
+      } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+        colors[i] <- "#EDB9C3"
+      } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+        colors[i] <- "white"
+      } 
+    
+    } else if (region[i] == "Occipital_Secondary") {
+      if (grepl("activated", column[i], ignore.case = TRUE)) {
+        colors[i] <- "#db5734"
+    } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+      colors[i] <- "#F4CCC2"
+    } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+      colors[i] <- "white"
+      }
+    
+    } else if (region[i] == "Lingual") {
+      if (grepl("activated", column[i], ignore.case = TRUE)) {
+      colors[i] <- "#eb8838"
+    } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+      colors[i] <- "#F9DBC3"
+    } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+      colors[i] <- "white"
+    }
+    } else if (region[i] == "Occipital_Cuneus") {
+    if (grepl("activated", column[i], ignore.case = TRUE)) {
+      colors[i] <- "#f4b74a"
+    } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+      colors[i] <- "#FCE9C8"
+    } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+      colors[i] <- "white"
+    }      
+    } else if (region == "NOSIGDIF") {
+    if (grepl("activated", column[i], ignore.case = TRUE)) {
+      return("black")
+    } else if (grepl("searched", column[i], ignore.case = TRUE)) {
+      return("lightgrey")
+    } else if (grepl("applied", column[i], ignore.case = TRUE)) {
+      return("white")
+    }
+    }
+      else if (region == "NA") {
+        
+        
+      }
+      
+    }
+  return(colors)
+}
+  
+  
+```
+
+
+```{r}
+##SET DIAGNOSIS: 
+#Diagnosis <- 'ADHD'
+Diagnosis <- 'ARD'
+#Diagnosis <- 'ASD'
+#Diagnosis <- 'BP'
+#Diagnosis <- 'BDD' ##NO STUDIES
+#Diagnosis <- 'BPD'
+#Diagnosis <- 'GD'
+#Diagnosis <- 'MDD'
+#Diagnosis <- 'OCD'
+#Diagnosis <- 'Schizophrenia'
+#Diagnosis <- 'SUD' 
+```
+
+
+```{r}
+#LOAD THE CLINICAL SAMPLE
+filename = paste0("M:/Documents/Hariri_review/USE_ME/Activations/Patients/Regions_Activated_", Diagnosis, ".csv")
+Regions_Activated <- read_csv(filename, show_col_types = FALSE)
+Regions_Activated <- Regions_Activated[-c(1)]
+
+
+cols_to_plot_searched <- c("Th1_Searched", "Th2_Searched", "Th3_Searched")
+cols_to_plot_activated <- c("Th1_Activated","Th2_Activated", "Th3_Activated","Th5_Activated","Th6_Activated", "Th7_Activated")
+cols_to_plot_applied <-  c("Th5_Applied","Th6_Applied", "Th7_Applied")
+
+MaxVals <- as.data.frame(subset(Regions_Activated[-c(1)] %>% select(all_of(cols_to_plot_activated))))
+MaxVals$MAX <- apply(MaxVals, 1, max, na.rm=TRUE)
+
+desired_order <- c("Amygdala", "Thalamus", "Hypothalamus", "Hippocampus","Parahippocampus","Basal_Ganglia", 
+                   "Cingulate","Frontal_dmPFC", "Frontal_vmPFC",  "Orbito_Frontal_TOTAL", "Frontal_vlPFC", "Frontal_dlPFC",
+                   "Temporal_Superior","Temporal_Middle", "Temporal_Inferior", "Fusiform",  "Temporal_Pole","Insula",   
+                   "Parietal_Superior", "Parietal_Inferior", "Parietal_Precuneus", "Cerebellum", "Brain_stem",  
+                   "Occipital_V1", "Occipital_Secondary", "Lingual", "Occipital_Cuneus", "Claustrum", "NOSIGDIF")
+
+Regions_Activated <- Regions_Activated %>%
+  mutate(Region = factor(Region, levels = desired_order)) %>%
+  arrange(Region)
+```
+
+
+```{r}
+#Remove completely empty regions
+remove_cols <- grep("[489]", colnames(Regions_Activated))
+Regions_Activated <- Regions_Activated[, -remove_cols]
+Regions_Activated <- Regions_Activated[rowSums(Regions_Activated[, -1]) > 0, ]
+
+
+```
+
+
+```{r}
+if (Diagnosis == 'ADHD') {
+  Regions_Activated$Th7_Applied <- 2
+} else if (Diagnosis == 'ARD') {
+  Regions_Activated$Th5_Applied <- 7
+  Regions_Activated$Th7_Applied <- 11
+} else if (Diagnosis == 'ASD') {
+  Regions_Activated$Th5_Applied <- 1
+#} else if (Diagnosis == 'BDD') {
+  #Regions_Activated$Th7_Applied <- 1
+#BPD No >Th5
+} else if (Diagnosis == 'BP') {
+  Regions_Activated$Th7_Applied <- 8
+} else if (Diagnosis == 'BPD') {
+  Regions_Activated$Th7_Applied <- 0 #place filler
+} else if (Diagnosis == 'GD') {
+  Regions_Activated$Th7_Applied <- 1
+} else if (Diagnosis == 'MDD') {
+  Regions_Activated$Th5_Applied <- 4
+  Regions_Activated$Th7_Applied <- 15
+} else if (Diagnosis == 'OCD') {
+  Regions_Activated$Th5_Applied <- 7
+  Regions_Activated$Th7_Applied <- 2
+} else if (Diagnosis == 'Schizophrenia') {
+  Regions_Activated$Th6_Applied <- 1
+} else if (Diagnosis == 'SUD') {
+  Regions_Activated$Th5_Applied <- 1
+  Regions_Activated$Th7_Applied <- 2
+}
+
+
+```
+
+
+```{r}
+# Melt the DataFrame to a long format
+df_long <- melt(Regions_Activated, id.vars = "Region", variable.name = "Th", value.name = "Value")
+
+# Split the 'Th' column to separate 'Value_Type' and 'Th' columns
+df_long <- separate(df_long, Th, into = c("Th", "Value_Type"), sep = "_")
+
+#Split the 'Value_Type' into "Activated", "Searched", "Applied", "Perc"
+df_wide <- dcast(df_long, Region + Th ~ Value_Type, value.var = "Value")
+
+#Remove rows where there were no searches and no activation 
+df_wide <- df_wide[!(is.na(df_wide$Searched) & is.na(df_wide$Activated)) & !(df_wide$Searched == 0 & df_wide$Activated == 0), ]
+df_wide <- df_wide[rowSums(is.na(df_wide)) != ncol(df_wide), ]
+```
+
+
+
+```{r}
+# Convert df_wide to a matrix and select relevant columns
+df_matrix <- as.matrix(df_wide[, c("Region", "Applied")])
+
+# Add Fill_colour column to df_wide
+df_wide$Fill_colour_Applied <- apply(df_matrix, 1, function(row) {
+  region <- row["Region"]
+  applied <- as.numeric(row["Applied"])
+  if (!is.na(applied)) {
+    return(getROIfill(region, "applied"))
+  }
+  return("white")
+})
+
+
+df_matrix <- as.matrix(df_wide[, c("Region", "Searched")])
+
+# Add Fill_colour column to df_wide
+df_wide$Fill_colour_Searched <- apply(df_matrix, 1, function(row) {
+  region <- row["Region"]
+  applied <- as.numeric(row["Searched"])
+  if (!is.na(applied)) {
+    return(getROIfill(region, "searched"))
+  }
+  return("white")
+})
+
+df_matrix <- as.matrix(df_wide[, c("Region", "Activated")])
+
+# Add Fill_colour column to df_wide
+df_wide$Fill_colour_Activated <- apply(df_matrix, 1, function(row) {
+  region <- row["Region"]
+  applied <- as.numeric(row["Activated"])
+  if (!is.na(applied)) {
+    return(getROIfill(region, "activated"))
+  }
+  return("white")
+})
+
+
+df_wide$Border_Colour <- NA
+
+df_matrix <- as.matrix(df_wide[, c("Region", "Searched", "Border_Colour")])
+
+# Add Fill_colour column to df_wide
+df_wide$Border_Colour <- apply(df_matrix, 1, function(row) {
+  region <- row["Region"]
+  applied <- as.numeric(row["Searched"])
+  return(getROIfill(region, "searched"))
+})
+
+
+
+```
+
+
+```{r}
+df_wide[df_wide == "Th1"] <- "R\n1"
+df_wide[df_wide == "Th2"] <- "R\n2"
+df_wide[df_wide == "Th3"] <- "R\n3"
+df_wide[df_wide == "Th5"] <- "W\n1"
+df_wide[df_wide == "Th6"] <- "W\n2"
+df_wide[df_wide == "Th7"] <- "W\n3"
+
+```
+
+```{r}
+# Create the plot
+
+# Create the text grobs for each region
+region_labels <- Regions_Activated$Region
+# Create an empty data frame to store the results
+mean_df <- data.frame(Region = character(), Mean_Row_Index = numeric(), stringsAsFactors = FALSE)
+
+# Calculate mean x for each region
+for (r in region_labels) {
+  # Subset the rows in df_wide where Region matches r
+  subset_rows <- which(df_wide$Region == r)
+  mean_row_index <- mean(subset_rows)/2
+  # Create a data frame with the region and mean row index
+  result <- data.frame(Region = r, Mean_Row_Index = mean_row_index, stringsAsFactors = FALSE)
+  # Append the result to mean_df
+  mean_df <- rbind(mean_df, result)
+}
+
+PLOT <- ggplot(df_wide, mapping = aes(x = interaction(Region, Th))) +
+  geom_bar(data = subset(df_wide, !is.na(Applied)), mapping = aes(y = Applied, fill = as.character(Fill_colour_Applied)), colour = subset(df_wide, !is.na(Applied))$Border_Colour, linewidth = 1, stat = "identity", width = 0.75) +
+  scale_fill_identity()+
+
+  geom_bar(data = subset(df_wide, !is.na(Searched)), mapping = aes(y = Searched, fill = as.character(Fill_colour_Searched)), stat = "identity", width = 0.75) +
+  scale_fill_identity()+
+   
+  geom_bar(data = subset(df_wide, !is.na(Activated)), mapping = aes(y = Activated, fill = as.character(Fill_colour_Activated)), stat = "identity", width = 0.5) +
+  scale_fill_identity()+
+  
+  ylim(0,30)+
+
+  labs(x = "", y = "Number of reports", family = "Calibri Light" )+
+
+  scale_x_discrete(
+    breaks = interaction(df_wide$Region, df_wide$Th),
+    labels = df_wide$Th,
+    limits = interaction(df_wide$Region, df_wide$Th))+
+
+
+  theme(panel.grid = element_blank(), #no grid
+          panel.border = element_blank(), #no border around the entire plot
+          axis.line.x.bottom = element_line(color = 'black'), #bottom border
+          axis.line.y.left   = element_line(color = 'black'), #left border
+          axis.line.y.right  = element_blank(), #no right border
+          #legend.title = element_blank(),
+          legend.position = "none",
+          #panel.background = element_rect(fill = "white"),
+          aspect.ratio = 2/10,
+          axis.text.x = element_text(angle = 0),
+          text=element_text(size=21, 
+          family="Calibri Light"),
+        plot.margin = unit(c(1,1,2,1), "lines")) +
+    coord_cartesian(xlim = range(1:51), clip="off")
+
+par(bg="transparent")
+showtext::showtext_opts(dpi=300)
+PLOT
+
+###FIX THE SAVING
+ggsave(plot = PLOT, width = 16.48, height = 6.49, units = "in", filename = paste0("M:/Documents/Hariri_review/USE_ME/Activations/Patients/Combined_Figures/", Diagnosis, "_greyt4trasnsparent_background.png"), device = cairo_ps(), dpi = 300)
+  
+dev.off()
+```
+
+
+
+
+

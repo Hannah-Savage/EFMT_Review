@@ -1,0 +1,172 @@
+---
+title: "Task_Names"
+author: "HannahSavage"
+date: "2022-12-16"
+output: html_document
+---
+
+## SET ENV
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+library(tidyr)
+library(forcats)
+```
+
+```{r Define_Themes}
+##DEFINE THEMES:
+theme_task_names <- theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    legend.position="none",
+    plot.title = element_text( hjust = 0.5 )
+  )
+
+```
+
+#Import the Data Extraction table:
+```{r}
+Extracted_data <- read_excel("M:/Documents/Hariri_review/USE_ME/Data_extraction_CLEANING.xlsx")
+#Extracted_data <- read_excel("M:/Documents/Hariri_review/Data_extraction_CLEANING.xlsx")
+#View(Extracted_data)
+```
+```{r}
+#How many articles
+Num_articles <- 153 #unique(round(Extracted_data$`Article_Num`))
+Total_num_articles <- 153# length(Num_articles)
+Total_num_articles 
+```
+
+##TASK: NAMES 
+```{r}
+fMRI_name <- Extracted_data[, c("STANDARDISED_Name_given_to_task", "STANDARDISED_Name_given_to_task_2", "STANDARDISED_Name_given_to_task_3")]
+fMRI_name$STANDARDISED_Name_given_to_task_2 <- na_if(fMRI_name$STANDARDISED_Name_given_to_task_2, "NA")
+fMRI_name$STANDARDISED_Name_given_to_task_3 <- na_if(fMRI_name$STANDARDISED_Name_given_to_task_3, "NA")
+fMRI_name_long <- pivot_longer(fMRI_name, 'STANDARDISED_Name_given_to_task':'STANDARDISED_Name_given_to_task_3')
+fMRI_name_long <- fMRI_name_long[,-c(1)]
+names(fMRI_name_long)[1] <- "Name_given_to_task"
+
+fMRI_name <- fMRI_name_long
+fMRI_name <- na.omit(fMRI_name)
+rm(fMRI_name_long)
+```
+
+
+```{r}
+Name_table <- count(fMRI_name, Name_given_to_task)
+
+fMRI_name_count <- count(fMRI_name, Name_given_to_task) 
+Total <- as.numeric(sum(fMRI_name_count$n))
+names(fMRI_name_count)[2] <- "Count_of_studies"
+fMRI_name_count[3] <- (fMRI_name_count[2]/Total_num_articles * 100) 
+names(fMRI_name_count)[3] <- "Percentage_of_studies"
+fMRI_name_count[4] <- "1"
+names(fMRI_name_count)[4] <- "Task_Name"
+
+Name_table[Name_table == "NA"] <- NA
+
+fMRI_name_count[fMRI_name_count == "NA"] <- NA
+Name_table[Name_table == "NA"] <- NA
+
+sum_total_names = sum(Name_table$n)
+
+Name_table$Percentage <- (Name_table$n / 153) * 100
+
+```
+
+
+```{r}
+firstLevel = Name_table  %>% summarize(total_names = sum(n))
+num_uniq = length(Name_table$Name_given_to_task) 
+gov_pop = Name_table %>% group_by(Name_given_to_task) %>%
+  summarize(total_names = sum(n)) %>%
+  arrange(desc(Name_given_to_task))
+
+compute_angle = function(perc){
+  angle = -1
+  if(perc < 0.25) # 1st q [90,0]
+    angle = 90 - (perc/0.25) * 90
+  else if(perc < 0.5) # 2nd q [0, -90]
+    angle = (perc-0.25) / 0.25 * -90
+  else if(perc < 0.75) # 3rd q [90, 0]
+   angle = 90 - ((perc-0.5) / 0.25 * 90)
+  else if(perc < 1.00) # last q [0, -90]
+    angle = ((perc -0.75)/0.25) * -90
+# Or even more compact, but less readable
+  if(perc < 0.5) # 1st half [90, -90]
+    angle = (180 - (perc/0.5) * 180) - 90
+  else # 2nd half [90, -90]
+    angle = (90 - ((perc - 0.5)/0.5) * 180)
+  return(angle)
+}
+
+
+
+secondLevel <- gov_pop 
+secondLevel$fill_code <- as.factor(factor(secondLevel$Name_given_to_task, levels = unique(secondLevel$Name_given_to_task)))
+
+# Reorder rows based on Name_given_to_task alphabetically
+stack_order <- secondLevel %>%
+  arrange(desc(is.na(Name_given_to_task)), Name_given_to_task) %>%
+  pull(Name_given_to_task)
+
+secondLevel = secondLevel %>%
+  mutate(running=cumsum(total_names), pos=running - total_names/2) %>% group_by(1:n()) %>% # to compute row by row
+  mutate(angle=compute_angle((running - total_names/2) / sum_total_names))
+
+secondLevel$fill_code <- as.integer(factor(secondLevel$total_names, levels = unique(secondLevel$total_names)))
+secondLevel <- secondLevel %>% arrange(Name_given_to_task)
+secondLevel[secondLevel == "NA"] <- NA
+
+```
+
+
+```{r}
+fill_colors <- c("#00bfff", "#ffe330", "#c345d5", "#8800c7","#ff9966" , "#ec008c", "#4cd964", "#40e8ec", "#ff6699")
+
+# Reorder the data frame by Name_given_to_task and create a factor for stacking
+stack_order <- secondLevel %>%
+  filter(!is.na(Name_given_to_task)) %>%
+  arrange(Name_given_to_task) %>%
+  pull(Name_given_to_task)
+
+secondLevel <- secondLevel %>%
+  mutate(Name_given_to_task = factor(Name_given_to_task, levels = c(stack_order, "NA")))
+
+# Edit the fill_color column
+secondLevel$fill_color <- fill_colors[secondLevel$fill_code]
+secondLevel$fill_color[is.na(secondLevel$Name_given_to_task)] <- "#F2F4F4"
+
+fill_colors_vector <- secondLevel$fill_color
+
+# Create the plot
+sunburst_NAMES <- 
+ggplot(firstLevel) +
+  geom_bar(data=firstLevel, aes(x=-0.5, y=total_names:total_names), fill='white', stat='identity', width=1.1) +
+  geom_bar(data=firstLevel, aes(x=0, y=total_names:total_names), fill='white', stat='identity', width=1) +
+  geom_bar(data=secondLevel,
+           aes(x = 1, y = total_names, fill = as.factor(Name_given_to_task)),
+           color = 'white', width = 1, position ='stack', stat = 'identity') +
+  scale_fill_manual(values = c(fill_colors_vector[1:62]), na.value = "#F2F4F4") +
+  coord_polar('y')# +
+  #theme_task_names
+
+options(repr.plot.width = 10, repr.plot.height = 10)
+print(sunburst_NAMES)
+```
+
+
+

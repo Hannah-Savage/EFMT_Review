@@ -1,0 +1,265 @@
+---
+title: "Scanner_plots"
+author: "HannahSavage"
+date: "2023-08-21"
+output: html_document
+---
+
+## SET ENV
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(reshape)
+library(scales)
+library(sjmisc)
+library(scatterpie)
+library(showtext)
+library(psych)
+library(tidyr)
+library(gtools)
+library(cowplot)
+```
+
+```{r Define_Themes}
+##DEFINE THEMES:
+theme_task_names <- theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    plot.title = element_text( hjust = 0.5 )
+  )
+
+```
+
+#Import the Data Extraction table:
+```{r}
+Extracted_data <- read_excel("M:/Documents/Hariri_review/USE_ME/Data_extraction_CLEANING.xlsx")
+#Extracted_data <- read_excel("M:/Documents/Hariri_review/Data_extraction_CLEANING.xlsx")
+#View(Extracted_data)
+```
+
+```{r}
+#How many articles
+Num_articles <- unique(round(Extracted_data$`Article_Num`))
+Total_num_articles <- length(Num_articles)
+Total_num_articles 
+```
+
+```{r}
+Scanner_data <- Extracted_data[,c("Article_Num", "First_Author", "Publication_Year", "Software_Used")]
+
+
+# Step 1: Transform Scanner_data into SOFTWARE_counts format
+Scanner_data <- Scanner_data %>%
+    mutate(Software_Used = strsplit(Software_Used, "[;,] ")) %>%
+    unnest(Software_Used) %>%
+    mutate(SOFTWARE = sub("^(AFNI|AIR|ANTS|ART|BrainVoyager|FSL|SPM).*", "\\1", Software_Used),
+           DETAILS = sub("^(AFNI|AIR|ANTS|ART|BrainVoyager|FSL|SPM)\\s*(.*)", "\\2", Software_Used)) %>%
+    mutate(SOFTWARE = ifelse(SOFTWARE == "NA", NA, SOFTWARE),
+           DETAILS = ifelse(DETAILS == "", NA, DETAILS)) %>%
+    mutate(DETAILS = gsub("v", "", DETAILS, fixed = TRUE)) %>%
+    mutate(SOFTWARE = ifelse(is.na(SOFTWARE), "NA", SOFTWARE),
+           DETAILS = ifelse(is.na(DETAILS), "NA", DETAILS)) %>%
+    count(SOFTWARE, DETAILS, na.rm = TRUE) %>%
+    mutate(Total = sum(n, na.rm = TRUE),
+           Percentage = (n / Total) * 100)
+
+Scanner_data <- Scanner_data[, -which(names(Scanner_data) == "na.rm")]
+
+Scan_table <- Scanner_data[,c("SOFTWARE", "DETAILS", "n")]
+
+Scanner_name_count <- Scanner_data[,c("SOFTWARE", "DETAILS", "n", "Percentage")]# "Scanner_Name")]
+Scanner_name_count[5] <- "1"
+names(Scanner_name_count)[3] <- "Count_of_studies"
+names(Scanner_name_count)[4] <- "Percentage_of_studies"
+names(Scanner_name_count)[5] <- "Scanner_Name"
+
+Total_scan <- as.numeric(sum(Scanner_name_count$Count_of_studies))
+sum_total_scan = sum(Scanner_name_count$Count_of_studies)
+
+```
+
+```{r}
+Scan_table <- Scan_table%>%
+    arrange(match(SOFTWARE, c("SPM", "FSL", "AFNI",  "In-house", "AIR" ,"ANTS", "ART","BrainVoyager", "fMRwhy toolbox (Matlab)", "NA")))
+
+#Specify 2nd level NA so as not to merge later
+Scan_table$DETAILS[7] <- "SPM_NA"
+Scan_table$DETAILS[17] <- "FSL_NA"
+Scan_table$DETAILS[18] <- "AFNI_NA"
+Scan_table$DETAILS[19] <- "Inhouse_NA"
+Scan_table$DETAILS[20] <- "AIR_NA"
+Scan_table$DETAILS[21] <- "ANTS_NA"
+Scan_table$DETAILS[22] <- "ART_NA"
+Scan_table$DETAILS[25] <- "fMRwhy_NA"
+
+new <- rbind(Scan_table[c(5, 6, 2, 3, 4, 1), ], Scan_table[7:26, ]) #re-order SPM in time order
+new2 <- rbind(new[1:12,], new[14,], new[13,], new[15:26,]) #re-order FSL so 5.0.7 comes before 5.0.11
+Scan_table <- new2
+
+#Creates an empty circle in the middle - the length (height) of the full dataset
+firstLevel = Scan_table %>% summarize(Total_scan = sum(n))
+
+num_uniq = length(Scan_table$DETAILS) 
+
+gov_pop = Scan_table %>% group_by(SOFTWARE) %>%
+  summarize(Total_scan = sum(n)) %>%
+  arrange(match(SOFTWARE, c("Siemens", "GE", "Philips", "Bruker", "NA")))
+
+gov_pop2 = Scan_table %>% group_by(DETAILS) %>%
+  summarize(Total_scan = sum(n)) %>%
+ arrange(match(DETAILS, Scan_table$DETAILS))
+
+
+compute_angle = function(perc){
+  angle = -1
+  if(perc < 0.25) # 1st q [90,0]
+    angle = 90 - (perc/0.25) * 90
+  else if(perc < 0.5) # 2nd q [0, -90]
+    angle = (perc-0.25) / 0.25 * -90
+  else if(perc < 0.75) # 3rd q [90, 0]
+   angle = 90 - ((perc-0.5) / 0.25 * 90)
+  else if(perc < 1.00) # last q [0, -90]
+    angle = ((perc -0.75)/0.25) * -90
+# Or even more compact, but less readable
+  if(perc < 0.5) # 1st half [90, -90]
+    angle = (180 - (perc/0.5) * 180) - 90
+  else # 2nd half [90, -90]
+    angle = (90 - ((perc - 0.5)/0.5) * 180)
+  return(angle)
+}
+
+secondLevel = gov_pop %>%
+  mutate(running=cumsum(Total_scan), pos=running - Total_scan/2) %>% group_by(1:n()) %>% # to compute row by row
+  mutate(angle=compute_angle((running - Total_scan/2) / sum_total_scan))
+
+
+thirdLevel = gov_pop2 %>% 
+  arrange(match(DETAILS, Scan_table$DETAILS)) %>%
+  mutate(running=cumsum(Total_scan), pos=running - Total_scan/2) %>% group_by(1:n()) %>% # to compute row by row
+  mutate(angle=compute_angle((running - Total_scan/2) / sum_total_scan))
+
+```
+
+```{r}
+
+SOFTWARE_colors <- c("#ec008c","#40e8ec", "#4cd964","#8800c7", "#ff6699", "#C5F8F9", "#56e78e", "#c345d5", "#ff9966", "white")
+                    ###"SPM",     "FSL",    "AFNI",  "In-house", "AIR" ,    "ANTS",     "ART",    "BrainVoyager", "fMRwhy toolbox (Matlab)", "NA"
+
+#PLOT OF SCANNER SOFTWARES
+sunburst_SCANNERS1 =
+  ggplot(firstLevel) +
+  geom_bar(data=firstLevel, aes(x=-0.5, y=Total_scan:Total_scan), fill='white', stat='identity', width=1.1) +
+  geom_bar(data=firstLevel, aes(x=0, y=Total_scan:Total_scan), fill='white', stat='identity', width=1) +
+  
+ # geom_bar(data=gov_pop, 
+#          aes(x = 0, y = Total_scan, fill = "white"),
+#          colour = 'white', position = 'stack', stat = 'identity', size = 0.6)+
+  
+  geom_bar(data=secondLevel, 
+          aes(x = 1, y = Total_scan,  fill = reorder(SOFTWARE, match(SOFTWARE, Scan_table$SOFTWARE))), 
+          colour = 'white', position = 'stack', stat = 'identity', linewidth = 0.6)+
+          scale_fill_manual(values = SOFTWARE_colors)+
+    
+  coord_polar('y') + 
+  theme_task_names #+
+  #theme(legend.position = "none")
+
+sunburst_SCANNERS1
+
+
+#PLOT OF SCANNER DETAILS
+details_colors <- c( "#FEDCDE", "#E6B2D1", "#FFD1E3", "#F9B2DC", "#ff6699", "#ff9fbf", "#F2F4F4", ##SPM
+                    "#1ebbd7", "#00689e", "#40e8ec",  "#00bfff", "#BBEAF3", "#3397af", "#C5F8F9","#0099b8", "#B2ECFF", "#F2F4F4", #FSL
+                    "#F2F4F4", #AFNI - all NA
+                    "#F2F4F4", #In-house MATLAB
+                    "#F2F4F4", #AIR
+                    "#F2F4F4", #ANTS
+                    "#F2F4F4", #ART
+                    "#c469fc", "#EDD2FE",#BrainVoyager
+                    "#F2F4F4", #fMRwhy toolbox (Matlab)
+                    "white") 
+
+
+sunburst_SCANNERS2 =
+  ggplot(firstLevel) +
+  geom_bar(data=firstLevel, aes(x=-0.5, y=Total_scan:Total_scan), fill='white', stat='identity', width=1.1) +
+  geom_bar(data=firstLevel, aes(x=0, y=Total_scan:Total_scan), fill='white', stat='identity', width=1) +
+
+  geom_bar(data=thirdLevel, 
+          aes(x = 2, y = Total_scan, fill = reorder(DETAILS, match(DETAILS, Scan_table$DETAILS) )), 
+          colour = 'white', position = 'stack', stat = 'identity', size = 0.6)+
+          scale_fill_manual(values = details_colors)+
+  
+   #geom_bar(data=secondLevel,
+  #  aes(x=1, y=Total_scan, fill =SOFTWARE),
+  # position='stack', stat='identity') +
+    
+  coord_polar('y') + 
+  theme_task_names #+
+  #theme(legend.position = "none")
+
+sunburst_SCANNERS2
+
+#COMBINED
+overlayed_plot <- plot_grid(sunburst_SCANNERS1, sunburst_SCANNERS2, align = "v")
+
+options(repr.plot.width = 10, repr.plot.height = 10)
+overlayed_plot 
+  
+```
+
+
+
+```{r}
+###PERCENTAGES AS A TOTAL OF 174 UNIQUE SOFTWARES
+# Assuming you have a dataframe named 'reordered_data'
+sum_percentages_by_software <- Scanner_data %>%
+  group_by(SOFTWARE) %>%
+  summarize(Sum_Percentage = sum(Percentage))
+
+# Print the results to the terminal
+print(sum_percentages_by_software)
+```
+
+
+```{r}
+###PERCENTAGES AS A TOTAL OF 151 MANUSCRIPTS
+sum_percentages_by_software <- Scanner_data %>%
+  group_by(SOFTWARE) %>%
+  summarize(Sum_n = sum(n)) %>%
+  mutate(Percentage = (Sum_n / Total_num_articles) * 100)
+
+# Print the results to the terminal
+print(sum_percentages_by_software)
+
+###PERCENTAGES AS A TOTAL OF 151 MANUSCRIPTS
+sum_percentages_by_versions <- Scan_table %>%
+  group_by(DETAILS) %>%
+  summarize(Sum_n = sum(n)) %>%
+  mutate(Percentage = (Sum_n / Total_num_articles) * 100)
+
+# Print the results to the terminal
+print(sum_percentages_by_versions)
+```
+```{r}
+##HOW MANY MANUSCRIPTS USED A COMBINATION OF SOFTWARES
+num_cells_with_special_chars <- sum(grepl("[;,]", Extracted_data$Software_Used))
+# Print the count of cells with special characters
+print(num_cells_with_special_chars)
+```
+
+
+```{r}
+##HOW MANY UNQIUE COMBINATIONS ARE THERE AND HOW MANY TIMES DO THEY EACH OCCUR:
+frequency_counts <- table(Extracted_data$Software_Used)
+# Print the frequency counts
+print(frequency_counts)
+```
+
